@@ -1,13 +1,9 @@
 # Portfolio Backtester (Focus Italia) 🇮🇹
 
-Un tool per simulare l'andamento di portafogli d'investimento composti da **prodotti UCITS**, pensato specificamente per chi investe dall'Italia.
-
-L'obiettivo del progetto è andare oltre i classici calcoli dei rendimenti lordi, permettendo di visualizzare come la **tassazione italiana** e i **costi operativi** influiscano sulla crescita del capitale nel tempo.
+Un tool per simulare l'andamento di portafogli d'investimento pensato specificamente per andare oltre i classici calcoli dei rendimenti lordi, permettendo di comprendere come la **tassazione** e i **costi operativi** influiscano sulla crescita del capitale nel tempo.
 
 ## 🎯 Cosa permette di fare
 
-* **Simulazioni con prodotti UCITS:** Analisi basata su ETF e strumenti realmente acquistabili sulle borse europee.
-* **Calcolo della fiscalità italiana:** Inserimento nel calcolo delle aliquote fiscali (26% e 12,5%) e dell'imposta di bollo dello 0,20%.
 * **Modellazione dei costi reali:** Il tool integra parametri fondamentali come **spread**, **commissioni** e **tracking difference**. Questi costi sono aggregati logicamente per riflettere l'operatività reale: 
     * I costi "spot" sono applicati sia in acquisto che in vendita (commissioni e spread).
     * La componente fiscale sulle plusvalenze viene calcolata al momento della vendita.
