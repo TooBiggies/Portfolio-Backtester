@@ -22,11 +22,11 @@ class portfolio_evo: #20260131 vincemauro
         self.rebalance_threshold      = rebalance_threshold     # Soglia per effettuare il ribilanciamento dei pesi
         self.df                       = imported_dataframe
         
-        if self.start_date is not None:
+        if start_date is not None:
             self.start_date = pd.to_datetime(start_date)
             self.df  = self.df[(self.df["Date"]>=self.start_date)].copy()
         
-        if self.end_date is not None:
+        if end_date is not None:
             self.end_date = pd.to_datetime(end_date)
             self.df  = self.df[(self.df["Date"]<=self.end_date)].copy()
             
