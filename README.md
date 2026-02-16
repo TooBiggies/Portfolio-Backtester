@@ -2,6 +2,7 @@
 
 
 📈 Simulatore di portafogli con tassazione e costi reali
+
 Uno strumento pensato per simulare l’evoluzione di un portafoglio d’investimento considerando tassazione, commissioni e costi operativi reali.
 L’obiettivo è andare oltre i tradizionali calcoli sui rendimenti lordi e offrire una visione più realistica dell’accumulo di capitale nel tempo.
 
