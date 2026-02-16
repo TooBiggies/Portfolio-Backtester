@@ -1,25 +1,17 @@
-# UCITS Portfolio Backtester
+# Portfolio Backtester (Focus Italia) 🇮🇹
 
-A portfolio backtesting tool that simulates investment strategies with historical data, specifically designed for **UCITS products** and European investors. 
+Un tool per simulare l'andamento di portafogli d'investimento pensato specificamente per andare oltre i classici calcoli dei rendimenti lordi, permettendo di comprendere come la **tassazione** e i **costi operativi** influiscano sulla crescita del capitale nel tempo.
 
-This tool allows users to optimize asset allocation and evaluate historical performance, providing clear insights into how different investment strategies would have performed over time.
+## 🎯 Cosa permette di fare
 
-## 🎯 Project Goals
-
-* **UCITS Compatibility:** Focus on ETFs and financial instruments available to the European market.
-* **Performance Analysis:** Evaluate historical returns, volatility, and risk metrics.
-* **Strategy Testing:** Tools to test and compare different portfolio structures and rebalancing frequencies.
-* **Asset Diversification:** Support for multi-asset portfolios including Stocks, Bonds, Gold, and Crypto.
-
-## ✨ Key Features
-
-* Historical backtesting with a focus on European-domiciled instruments.
-* Comprehensive performance analytics (CAGR, Drawdown, Volatility).
-* Flexible asset allocation modeling.
-
-## 🚀 Getting Started
-
-*(Instructions for installation and usage will be added as the project evolves)*
+* **Modellazione dei costi reali:** Il tool integra parametri fondamentali come **spread**, **commissioni** e **tracking difference**. Questi costi sono aggregati logicamente per riflettere l'operatività reale: 
+    * I costi "spot" sono applicati sia in acquisto che in vendita (commissioni e spread).
+    * La componente fiscale sulle plusvalenze viene calcolata al momento della vendita.
+    * I costi ricorrenti, come l'imposta di bollo e la tracking difference, vengono applicati su base annuale.
+* **Rendimenti reali (Netti):** Confronto tra la crescita lorda del mercato e il rendimento effettivamente disponibile per l'investitore dopo tasse e costi.
+* **Analisi dei ribilanciamenti:** Valutazione dell'impatto fiscale e commissionale quando si vendono quote per riportare il portafoglio all'asset allocation desiderata.
 
 ---
-**Disclaimer:** This tool is for educational purposes only and does not constitute financial advice.
+
+## ⚠️ Nota
+Questo strumento è creato a scopo informativo e di studio personale. Non fornisce consigli finanziari o fiscali e i risultati delle simulazioni non sono garanzia di rendimenti futuri.
