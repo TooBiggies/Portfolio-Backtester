@@ -61,7 +61,7 @@ for i in ptf.StockPrice.index:
     df_log.loc[ptf.date[i], ptf.IndexName]           = ptf.AssetValue
     df_log_delta.loc[ptf.date[i], ptf.IndexName]     = ptf.delta_notional*StockPrice
 
-df_log.to_csv("test_output.csv", index=True)
+#df_log.to_csv("test_output.csv", index=True) # uncomment only if bugs are found and you need to update the reference output for testing
 ref_df_log = pd.read_csv("test_output.csv", index_col=0, parse_dates=True)
 
 pd.testing.assert_frame_equal(ref_df_log, df_log, check_dtype=False)
