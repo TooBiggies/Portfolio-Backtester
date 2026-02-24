@@ -11,7 +11,7 @@ from classes import portfolio_evo
 # Index 1  # Index 2 # Index 3 # Index 4 ...
 #             VTSIM SPYSIM  VXUSSIM GLDSIM  CASHX SHYSIM  IEFSIM  TLTSIM  ZROZSIM KMLMSIM DBMFSIM
 
-initial_w = [ 0.6,  0,      0,      0.05,   0,    0,      0,      0,      0.25,   0.05,   0.05]
+initial_w = [ 0.5,  0,      0,      0.5,   0,    0,      0,      0,      0.,   0.,   0.]
 imported_dataframe= pd.read_csv("./Timeseries.csv", sep = ";")
 # Converte la colonna Date in datetime
 imported_dataframe["Date"] = pd.to_datetime(imported_dataframe["Date"], dayfirst=True, errors="coerce")
@@ -62,8 +62,9 @@ for i in ptf.StockPrice.index:
     df_log_delta.loc[ptf.date[i], ptf.IndexName]     = ptf.delta_notional*StockPrice
 
 #df_log.to_csv("test_output.csv", index=True) # uncomment only if bugs are found and you need to update the reference output for testing
+#df_log_delta.to_csv("test_output_delta.csv", index=True)
 ref_df_log = pd.read_csv("test_output.csv", index_col=0, parse_dates=True)
+ref_df_log_delta = pd.read_csv("test_output_delta.csv", index_col=0, parse_dates=True)
 
 pd.testing.assert_frame_equal(ref_df_log, df_log, check_dtype=False)
-
-df_log.to_excel("test_output.xlsx")
+pd.testing.assert_frame_equal(ref_df_log_delta, df_log_delta, check_dtype=False)
