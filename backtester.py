@@ -67,6 +67,9 @@ def run_backtest():
         df_log_delta.loc[ptf.date[i], ptf.IndexName]      = ptf.delta_notional*StockPrice
 
         # Save outputs (filenames from config)
+        # Ensure reports dir exists and create a timestamp for this iteration
+        os.makedirs(cfg.REPORTS_DIR, exist_ok=True)
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         # Save Excel outputs into the reports directory with the same timestamp
         xlsx_name = f"{ts}_{os.path.basename(cfg.OUTPUT_XLSX)}"
         delta_name = f"{ts}_{os.path.basename(cfg.OUTPUT_DELTA_XLSX)}"
@@ -119,8 +122,8 @@ def run_backtest():
             f.write(f"- tax_rate: {ptf.tax_rate}\n")
             f.write(f"- rebalance_threshold: {ptf.rebalance_threshold}\n\n")
             f.write(f"**Output files:**\n")
-            f.write(f"- {os.path.abspath(cfg.OUTPUT_XLSX)}\n")
-            f.write(f"- {os.path.abspath(cfg.OUTPUT_DELTA_XLSX)}\n")
+            f.write(f"- {os.path.abspath(xlsx_path)}\n")
+            f.write(f"- {os.path.abspath(delta_path)}\n")
 
         logger.info(f"Saved markdown report: {report_path}")
 
