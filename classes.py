@@ -96,11 +96,31 @@ class portfolio_evo: #20260131 vincemauro
         self.PercReturn          = 0.0                                                      # Inizializzazione rendimenti percentuali
         self.CompoundReturn      = 1.0                                                      # Inizializzazione rendimenti composti
         self.immediate_payments  = 0.0                                                      # cash adjustments (taxes/fees paid immediately)
+        self.GrossValue = float(self.TotValue)                                              # market value without costs/taxes
+        self.BrokerValue = float(self.TotValue)                                             # market value as seen at broker (includes paid fees)
+        self.NetValue = float(self.TotValue)                                                # liquidation value (after taxes and liquidation costs)
 
     def update_TotValue(self, StockPrice):
         #StockPrice deve essere una Series col nome degli Stock come indici
-        # TotValue reflects market value of positions plus any immediate cash adjustments
-        self.TotValue = self.calculate_TotValue(StockPrice) + self.immediate_payments
+        # Update Gross/Broker/Net values and keep TotValue as broker view for compatibility
+        gross = self.calculate_TotValue(StockPrice)
+        self.GrossValue = gross
+        self.BrokerValue = gross + self.immediate_payments
+        # TotValue preserved as broker view (market value plus any cash adjustments)
+        self.TotValue = float(self.BrokerValue)
+        # compute NetValue = value if liquidated now (subtract liquidation TC and taxes on realized gains)
+        try:
+            liq_tc = (abs(self.notional) * StockPrice).sum() * self.transactional_cost_rate
+        except Exception:
+            liq_tc = 0.0
+        # tax on full liquidation: sum over assets of max((price - PMC) * notional, 0) * tax_rate
+        try:
+            gains = (StockPrice - self.PMC) * self.notional
+            taxable = gains[gains > 0].sum()
+            tax_liab = float(taxable) * float(self.tax_rate)
+        except Exception:
+            tax_liab = 0.0
+        self.NetValue = float(gross) + float(self.immediate_payments) - float(liq_tc) - float(tax_liab)
 
     # def update_AssetValue(self, StockPrice):
     #     #StockPrice deve essere una Series col nome degli Stock come indici
