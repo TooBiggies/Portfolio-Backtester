@@ -4,12 +4,13 @@ import numpy as np
 
 class Portfolio:
 
-    def __init__(self, prices: pd.DataFrame, initial_cash: float = 0.0, initial_value: float = 1.):
+    def __init__(self, prices: pd.Series, initial_cash: float = 0.0, initial_value: float = 1., brokerage_fee_rate: float=0.):
         self.prices = prices
-        self.holdings = pd.Series(0.0, index=prices.columns)
-        self.total_cost = pd.Series(0.0, index=prices.columns)
+        self.holdings = pd.Series(0.0, index=prices.index)
+        self.total_cost = pd.Series(0.0, index=prices.index)
         self.cash = initial_cash
         self.tax_paid = 0.0
+        self.brokerage_fee_rate = brokerage_fee_rate
         
         self.initial_value = initial_value
 
@@ -19,27 +20,27 @@ class Portfolio:
 
     @property
     def assets(self):
-        return self.holdings.columns
+        return self.holdings.index
 
     @property
     def gross_value(self):
-        return self.value + self.tax_paid
+        return self.net_value + self.tax_paid
             
     @property
     def net_return(self):
-        return self.net_value / self.initial_capital - 1
+        return self.net_value / self.initial_value - 1
 
     @property
     def gross_return(self):
-        return self.gross_value / self.initial_capital - 1
+        return self.gross_value / self.initial_value - 1
         
     @property
     def weights(self):
         asset_value = self.holdings * self.prices
-        total_value = self.value
-        if total_value == 0:
+        net_value = self.net_value
+        if net_value == 0:
             return pd.Series(0.0, index=self.holdings.index)
-        return asset_value / total_value
+        return asset_value / net_value
 
     @property
     def average_cost(self):
@@ -47,13 +48,13 @@ class Portfolio:
 
     def buy(self, asset: str, units: float):
         price = self.prices[asset]
-        cost = units * price
+        cost = units * price * (1+self.brokerage_fee_rate)
 
         self.holdings[asset] += units
         self.total_cost[asset] += cost
         self.cash -= cost
 
-    def sell(self, asset: str, units: float, transactional_cost_rate: float=0.26):
+    def sell(self, asset: str, units: float, tax_rate: float=0.26):
 
         if units > self.holdings[asset]:
             raise ValueError("Cannot sell more units than currently held.")
@@ -63,16 +64,14 @@ class Portfolio:
 
         realized_gain = units * (price - avg_cost)
 
-        tax = max(0.0, realized_gain) * self.tax_rate
+        tax = max(0.0, realized_gain) * tax_rate
 
         # Update state
         self.holdings[asset] -= units
         self.total_cost[asset] -= units * avg_cost
-        self.cash += units*price*(1-transactional_cost_rate) - tax 
+        self.cash += units*price*(1-self.brokerage_fee_rate) - tax 
 
         self.tax_paid += tax  
-
-        return realized_gain, tax
 
     def trade(self, asset: str, units: float): 
         if units<0: 
@@ -93,7 +92,7 @@ class PortfolioTracker:
         self.delta_notional = []
 
     def update(self, portfolio: Portfolio):
-        current_value = portfolio.value
+        current_value = portfolio.net_value
 
         self.total_value.append(current_value)
 
@@ -110,7 +109,7 @@ class PortfolioTracker:
             compounded = ret
 
         self.compound_returns.append(compounded)
-        self.assets_value.append((portfolio.holdings * portfolio.current_prices).sum())
+        self.assets_value.append((portfolio.holdings * portfolio.prices).sum())
 
 
     
@@ -123,12 +122,11 @@ class Rebalancer:
     def rebalance(self, portfolio):
         current_weights = portfolio.weights
 
-        delta_weights = current_weights-self.target_weights
+        delta_weights = self.target_weights - current_weights
         if np.any(np.abs(delta_weights)>self.threshold):
             
-
             for asset in portfolio.assets:
-                units = delta_weights[asset] * portfolio.value / portfolio.prices[asset]
+                units = delta_weights[asset] * portfolio.net_value / portfolio.prices[asset]
 
                 portfolio.trade(asset, units)
 
