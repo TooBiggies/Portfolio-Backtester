@@ -1,3 +1,17 @@
+"""portfolio_evo: semplice motore di backtest per portafogli ribilanciati.
+
+Contiene la classe `portfolio_evo` che rappresenta l'evoluzione di un
+portafoglio costruito su una serie storica di prezzi. La classe gestisce:
+- normalizzazione prezzi (opzionale),
+- calcolo del notional (numero di unità) per asset,
+- controllo e applicazione del ribilanciamento verso pesi target,
+- calcolo di costi di transazione e imposte sulle plusvalenze realizzate,
+- tracking del prezzo medio di carico (PMC) per il calcolo delle imposte.
+
+Il file non modifica la logica di calcolo originale, aggiunge solo
+docstring e spiegazioni sulle formule usate.
+"""
+
 import numpy as np
 import pandas as pd
 import os
@@ -5,12 +19,41 @@ import sys
 import matplotlib.pyplot as plt
 
 class portfolio_evo: #20260131 vincemauro
+    """Rappresenta lo stato e le operazioni di un portafoglio ribilanciato.
+
+    Principali concetti:
+    - `initial_w`: pesi target (es. [0.6,0.0,...]) che vogliamo mantenere;
+    - `w`: pesi correnti calcolati come AssetValue / TotValue;
+    - `notional`: numero di unità per ogni asset (AssetValue / prezzo);
+    - `delta_notional`: variazione di unità necessaria per ribilanciare ai pesi target;
+    - `PMC`: prezzo medio di carico per asset (usato per calcolare le plusvalenze tassabili);
+
+    Formula chiave per il ribilanciamento (unità da comprare/vendere):
+        delta_notional = (initial_w - w) * TotValue / StockPrice
+
+    Dove `TotValue` è il valore corrente del portafoglio e `StockPrice` è il
+    prezzo corrente per asset. Questa formula deriva dal voler ottenere, dopo
+    l'operazione, AssetValue = initial_w * TotValue, e quindi notional = AssetValue / price.
+    """
 
     #20260131 vincemauro reimpostati tutti i valori numerici con virgola per forzare il type a float. Diversamente sono int e alla prima assegnazione con virgola si va in errore.
     colonne_escluse = ["Date"]  # colonne da escludere nell'import del DF nell'oggetto
 
     def __init__(self, initial_balance, transac_cost_rate, tax_rate, exp_rate, rebalance_threshold,
                  initial_w, imported_dataframe, start_date=None, end_date=None, stock_price_normalization = True):
+        """Inizializza lo stato del portafoglio.
+
+        Parametri principali:
+        - initial_balance: capitale iniziale (valore monetario)
+        - transac_cost_rate: % di costo applicata alle operazioni (commissioni+spread)
+        - tax_rate: aliquota fiscale sulle plusvalenze realizzate
+        - exp_rate: spese correnti (tracking + bollo) - non usato direttamente nei calcoli qui
+        - rebalance_threshold: soglia su deviazione di peso che attiva il ribilanciamento
+        - initial_w: pesi target (list o array) con lunghezza pari al numero di asset
+        - imported_dataframe: DataFrame contenente colonna 'Date' e colonne prezzi per asset
+        - stock_price_normalization: se True normalizza i prezzi dividendo per il primo valore
+        """
+
         self.StartValue               = initial_balance         # Valore iniziale del PTF - vincemauro 20260131
         self.TotValue                 = initial_balance         # Valore totale del PTF
         self.NetTotValue              = self.TotValue           # Valore totale del PTF sottraendo  tasse e costi di transazione
@@ -66,40 +109,62 @@ class portfolio_evo: #20260131 vincemauro
         self.NetTotValue = self.calculate_NetTotValue(StockPrice)
 
     def update_AssetValue_weight(self,StockPrice):
+        """Aggiorna `AssetValue` e i pesi correnti `w` dati i prezzi attuali.
+
+        AssetValue = notional * price
+        w = AssetValue / TotValue
+        """
         self.AssetValue = self.notional * StockPrice
         self.w = self.AssetValue/self.calculate_TotValue(StockPrice)
 
     def calculate_TotValue(self,StockPrice):
         #StockPrice deve essere una Series col nome degli Stock come indici
+        """Valore totale del portafoglio come dot product tra notional e prezzi."""
         return self.notional.dot(StockPrice)
 
     def calculate_NetTotValue(self, StockPrice):
         #StockPrice deve essere una Series col nome degli Stock come indici
+        """Valore netto che include costi transazionali e imposte (valori negativi)."""
         return self.calculate_TotValue(StockPrice) + self.TransactionalCost + self.tax
 
     # def calculate_AssetValue(self, StockPrice):
     #     return self.notional * StockPrice
 
     def update_Return(self, StockPrice):
+        """Calcola il rendimento percentuale del periodo e aggiorna il rendimento composto.
+
+        Usa `NetTotValue` (che include costi e tasse) per ottenere rendimenti netti.
+        """
         old_NetTotValue = self.NetTotValue
         current_NetTotValue = self.calculate_NetTotValue(StockPrice)
         self.PercReturn = current_NetTotValue/old_NetTotValue - 1.0
         self.CompoundReturn *= 1.0 + self.PercReturn
 
     def update_PMC(self,StockPrice):
+        """Aggiorna il Prezzo Medio di Carico (`PMC`) quando si acquistano unità.
+
+        Per gli asset per cui `delta_notional > 0` (acquisto), il nuovo PMC è la
+        media pesata tra il vecchio PMC e il valore delle nuove unità acquistate
+        (delta_notional * price). `PMC_weight` è il denominatore cumulato usato
+        per calcolare la media pesata.
+        """
         mask_buy = self.delta_notional > 0
-        self.PMC = self.PMC.copy() #?
+        self.PMC = self.PMC.copy()
         self.PMC[mask_buy] = (self.PMC[mask_buy]*self.PMC_weight[mask_buy]
                               + (self.delta_notional*StockPrice)[mask_buy] )
-        #print("Debug 1")
-        #print(f"self.PMC_weight[mask_buy] {self.PMC_weight[mask_buy]}")
-        #print(f"self.delta_notional[mask_buy] {self.delta_notional[mask_buy]}")
         self.PMC_weight[mask_buy] += self.delta_notional[mask_buy]
-        #print("Debug 2")
         self.PMC[mask_buy] /= self.PMC_weight[mask_buy]
-        #print("Debug 3")
 
     def update_tax(self,StockPrice):
+        """Calcola le imposte sulle plusvalenze realizzate.
+
+        Si applica la tassa solo se si vendono quote (`delta_notional < 0`) e il
+        prezzo di realizzo è maggiore del `PMC` (plusvalenza). L'importo tassato
+        è somma(quantità venduta * prezzo) * tax_rate.
+        Nota: `delta_notional` è negativo per vendite, quindi l'espressione rispetta
+        il segno e produce un valore positivo delle plusvalenze prima di moltiplicare
+        per `tax_rate`.
+        """
         mask_tax = (self.delta_notional < 0) & (StockPrice > self.PMC)
         if np.sum(mask_tax) >0:
             self.tax = (self.delta_notional*StockPrice)[mask_tax].sum()*self.tax_rate
@@ -107,9 +172,27 @@ class portfolio_evo: #20260131 vincemauro
             self.tax = 0.0
 
     def update_transactional_cost(self, StockPrice):
+        """Calcola il costo transazionale come percentuale del controvalore scambiato.
+
+        Viene usata la somma del valore assoluto delle variazioni di notional
+        (|delta_notional| * prezzo) e moltiplicata per il tasso di costo.
+        Il risultato è negativo (costo) e viene sommato a NetTotValue.
+        """
         self.TransactionalCost = -(abs(self.delta_notional)*StockPrice).sum()*self.transactional_cost_rate
 
     def update_notional_tax_transaccost(self, StockPrice):
+        """Calcola e applica la variazione di notional per ribilanciare ai pesi target.
+
+        Steps:
+        1. delta_notional = (initial_w - w) * TotValue / price  (unità da comprare/vendere)
+        2. aggiorna PMC per le eventuali compravendite
+        3. calcola imposte e costi transazionali
+        4. aggiorna il `notional` (numero di unità) con `notional += delta_notional`
+
+        Nota: l'ordine è importante perché PMC deve riflettere gli acquisti prima di
+        calcolare eventuali imposte su vendite; qui si usa l'ordine implementato
+        originariamente dall'autore.
+        """
         self.delta_notional = (self.initial_w - self.w)*self.calculate_TotValue(StockPrice)/StockPrice
         self.update_PMC(StockPrice)
         self.update_tax(StockPrice)
@@ -124,6 +207,10 @@ class portfolio_evo: #20260131 vincemauro
         self.delta_notional = 0.0
 
     def check_rebalance(self):
+        """Controlla se qualche asset supera la soglia di deviazione e richiede ribilanciamento.
+
+        Restituisce True se esiste almeno un asset per cui |w - initial_w| > rebalance_threshold.
+        """
         if sum( np.abs(self.w - self.initial_w) > self.rebalance_threshold) > 0:
             return True
         else:

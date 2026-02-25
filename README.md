@@ -1,3 +1,33 @@
+# Portfolio Backtester
+
+Quick notes to run the backtester in this repo.
+
+Files:
+- `backtester.py` — script that runs the backtest using `backtester_config.py` settings.
+- `backtester_config.py` — configuration for initial weights, capital and dates.
+- `classes.py` — contains `portfolio_evo` class (backtest engine).
+- `Timeseries.csv` — historical price data (semicolon-separated).
+
+Run in a virtual environment (this repo created `.venv`):
+
+```bash
+# activate venv
+source .venv/bin/activate
+
+# run the backtest (will write output_ptf.xlsx and output_ptf_delta.xlsx)
+python backtester.py
+
+# run tests
+pytest -q
+```
+
+Jupyter:
+- A Jupyter server can be started from the venv with `.venv/bin/jupyter lab --no-browser --ip=127.0.0.1 --port=8888`.
+- Then open `Backtester.ipynb` in the web UI.
+
+Notes:
+- `backtester_config.py` holds the UI variables extracted from the notebook (weights, capital, dates).
+- `backtester.py` mirrors the notebook `backtest()` logic and saves results to Excel files.
 # Portfolio Backtester (Focus Italia) 🇮🇹
 
 Un tool per simulare l'andamento di portafogli d'investimento pensato specificamente per andare oltre i classici calcoli dei rendimenti lordi, permettendo di comprendere come la **tassazione** e i **costi operativi** influiscano sulla crescita del capitale nel tempo.
