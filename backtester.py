@@ -67,8 +67,13 @@ def run_backtest():
         df_log_delta.loc[ptf.date[i], ptf.IndexName]      = ptf.delta_notional*StockPrice
 
         # Save outputs (filenames from config)
-        df_log.to_excel(cfg.OUTPUT_XLSX)
-        df_log_delta.to_excel(cfg.OUTPUT_DELTA_XLSX)
+        # Save Excel outputs into the reports directory with the same timestamp
+        xlsx_name = f"{ts}_{os.path.basename(cfg.OUTPUT_XLSX)}"
+        delta_name = f"{ts}_{os.path.basename(cfg.OUTPUT_DELTA_XLSX)}"
+        xlsx_path = os.path.join(cfg.REPORTS_DIR, xlsx_name)
+        delta_path = os.path.join(cfg.REPORTS_DIR, delta_name)
+        df_log.to_excel(xlsx_path)
+        df_log_delta.to_excel(delta_path)
 
         # Prepare summary
         start_dt = min(ptf.date).date()
