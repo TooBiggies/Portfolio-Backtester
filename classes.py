@@ -95,10 +95,12 @@ class portfolio_evo: #20260131 vincemauro
         self.notional            = self.AssetValue/self.StockPrice.loc[0,:]                 # Inizializzazione notional degli asset
         self.PercReturn          = 0.0                                                      # Inizializzazione rendimenti percentuali
         self.CompoundReturn      = 1.0                                                      # Inizializzazione rendimenti composti
+        self.immediate_payments  = 0.0                                                      # cash adjustments (taxes/fees paid immediately)
 
     def update_TotValue(self, StockPrice):
         #StockPrice deve essere una Series col nome degli Stock come indici
-        self.TotValue = self.calculate_TotValue(StockPrice)
+        # TotValue reflects market value of positions plus any immediate cash adjustments
+        self.TotValue = self.calculate_TotValue(StockPrice) + self.immediate_payments
 
     # def update_AssetValue(self, StockPrice):
     #     #StockPrice deve essere una Series col nome degli Stock come indici
@@ -195,9 +197,17 @@ class portfolio_evo: #20260131 vincemauro
         """
         self.delta_notional = (self.initial_w - self.w)*self.calculate_TotValue(StockPrice)/StockPrice
         self.update_PMC(StockPrice)
+        # compute taxes and transaction costs (these are amounts, tax/TransactionalCost
+        # are negative when they represent payments)
         self.update_tax(StockPrice)
         self.update_transactional_cost(StockPrice)
+        # update notional quantities
         self.notional += self.delta_notional
+        # record immediate payments (taxes + transaction costs) as cash adjustment
+        try:
+            self.immediate_payments += (self.tax + self.TransactionalCost)
+        except Exception:
+            pass
 
     def reset_tax_transaccost(self):
         self.tax = 0.0
