@@ -28,8 +28,8 @@ INITIAL_WEIGHTS = [0.60, 0.00, 0.00, 0.10, 0.00, 0.00, 0.00, 0.00, 0.25, 0.00, 0
 CAPITAL = 10000
 
 # Start / end dates (datetime.date)
-START_DATE = date(2025, 1, 1)
-END_DATE = date(2025, 9, 1)
+START_DATE = date(2020, 1, 1)
+END_DATE = date(2025, 10, 30)
 
 # Output filenames
 OUTPUT_XLSX = "output_ptf.xlsx"
@@ -43,7 +43,7 @@ EXP_RATE = 0.002
 # - tax rate on realized gains (fractional)
 TAX_RATE = 0.26
 # - rebalance threshold per-asset (absolute difference in weight)
-REBALANCE_THRESHOLD = 0.1
+REBALANCE_THRESHOLD = 0.05
 # - whether to normalize stock prices at t0 (True/False)
 STOCK_PRICE_NORMALIZATION = True
 

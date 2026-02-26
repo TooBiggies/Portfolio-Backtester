@@ -1,3 +1,53 @@
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Generated reports and exports
+reports/
+reports/**
+
+# Common generated spreadsheet / data exports (optional)
+*.xlsx
+*.xls
+reports/*.csv
+reports/*.xlsx
+
+# Local env / secrets
+.env
+*.pem
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db
 __pycache__/
 *.pyc
 *xls*
