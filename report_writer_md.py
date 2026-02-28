@@ -68,11 +68,83 @@ def write_markdown_report(report_path: str, ts: str, df_log, df_log_delta,
             if len(rebalance_transactions) == 0:
                 f.write("None\n")
             else:
-                for tx in rebalance_transactions:
-                    f.write(f"### Rebalance on {tx['date']}\n")
-                    f.write(f"- Total trade value: {tx['total_trade_value']:.2f}\n")
-                    f.write(f"- Transactional cost: {tx['transactional_cost']:.2f}\n")
-                    f.write(f"- Tax: {tx['tax']:.2f}\n")
+                for i, tx in enumerate(rebalance_transactions):
+                    # Build plain-English summary for markdown (include totals and per-asset taxes if available)
+                    date = tx.get('date', '(unknown)')
+                    total_trade = tx.get('total_trade_value', 0.0) or 0.0
+                    tcost = tx.get('transactional_cost', 0.0) or 0.0
+                    tax_total = tx.get('tax', 0.0) or 0.0
+
+                    pre_w = tx.get('pre_w') or {}
+                    post_w = tx.get('post_w') or {}
+                    thresh = getattr(ptf, 'rebalance_threshold', None)
+
+                    # find primary asset with max deviation
+                    max_dev = 0.0
+                    max_asset = None
+                    keys = set(list(pre_w.keys()) + list(post_w.keys()))
+                    for k in keys:
+                        pw = pre_w.get(k, 0.0) or 0.0
+                        qw = post_w.get(k, 0.0) or 0.0
+                        dev = abs(pw - qw)
+                        if dev > max_dev:
+                            max_dev = dev
+                            max_asset = (k, pw, qw)
+
+                    if max_asset and thresh is not None and max_dev >= thresh:
+                        k, pw, qw = max_asset
+                        lead = (f"For the asset {k} the initial value was {pw*100:.2f}% and "
+                                f"the current one is {qw*100:.2f}%. This exceeds the rebalance "
+                                f"threshold of {thresh*100:.2f}%, so a rebalance is being executed to "
+                                f"restore target weights.")
+                    elif max_asset:
+                        k, pw, qw = max_asset
+                        lead = (f"For the asset {k} the value moved from {pw*100:.2f}% to {qw*100:.2f}% "
+                                f"(deviation {max_dev*100:.2f}%), which did not exceed the configured "
+                                f"rebalance threshold.")
+                    else:
+                        # fallback to any provided explanation
+                        lead = ''
+
+                    # per-asset taxes if present under common keys
+                    tax_map = tx.get('tax_by_asset') or tx.get('taxes_by_asset') or tx.get('taxes') or tx.get('tax_map') or {}
+
+                    # build asset-level notes for buys/sells
+                    sells = []
+                    buys = []
+                    delta_map = tx.get('delta_notional') or {}
+                    price_map = tx.get('price') or {}
+                    trade_values = tx.get('trade_values') or {}
+                    for a, delta in (delta_map.items() if isinstance(delta_map, dict) else []):
+                        if delta is None:
+                            continue
+                        if delta < 0:
+                            sells.append((a, delta, price_map.get(a, None), trade_values.get(a, None)))
+                        elif delta > 0:
+                            buys.append((a, delta, price_map.get(a, None), trade_values.get(a, None)))
+
+                    # Compose summary paragraph
+                    summary_lines = []
+                    if lead:
+                        summary_lines.append(lead)
+                    summary_lines.append(f"In total, this rebalance executed approximately ${total_trade:.2f} of trades, incurring ${tcost:.2f} in transaction costs and ${tax_total:.2f} in taxes.")
+                    for a, delta, price, tv in sells:
+                        tax_a = None
+                        if isinstance(tax_map, dict):
+                            tax_a = tax_map.get(a)
+                        tax_str = f" and paid ${tax_a:.2f} in taxes" if isinstance(tax_a, (int, float)) and tax_a != 0 else ""
+                        tv_str = f" for a trade value of ${tv:.2f}" if isinstance(tv, (int, float)) else ""
+                        summary_lines.append(f"Sold {abs(delta):.2f} notional of {a}{tv_str}{tax_str}.")
+                    for a, delta, price, tv in buys:
+                        tv_str = f" for a trade value of ${tv:.2f}" if isinstance(tv, (int, float)) else ""
+                        summary_lines.append(f"Bought {delta:.2f} notional of {a}{tv_str}.")
+
+                    # Write header and summary paragraph
+                    f.write(f"### Rebalance on {date}\n")
+                    f.write(f"_ {' '.join(summary_lines)} _\n\n")
+                    f.write(f"- Total trade value: {total_trade:.2f}\n")
+                    f.write(f"- Transactional cost: {tcost:.2f}\n")
+                    f.write(f"- Tax: {tax_total:.2f}\n")
                     f.write("\nAsset | Price | Delta notional | Trade value | Pre notional | Post notional | Pre w | Post w\n")
                     f.write("--- | ---: | ---: | ---: | ---: | ---: | ---: | ---\n")
                     assets = tx['price'].keys()

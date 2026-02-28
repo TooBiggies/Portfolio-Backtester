@@ -3,6 +3,24 @@ import os
 import datetime
 from typing import Optional
 import pandas as pd
+import html
+import re
+
+def _round_numbers(obj, ndigits=2):
+    """Recursively round floats in lists/dicts/tuples to `ndigits` decimals."""
+    try:
+        if isinstance(obj, float):
+            return round(obj, ndigits)
+        if isinstance(obj, dict):
+            return {k: _round_numbers(v, ndigits) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_round_numbers(v, ndigits) for v in obj]
+        if isinstance(obj, tuple):
+            return tuple(_round_numbers(v, ndigits) for v in obj)
+        # ints and others left unchanged
+        return obj
+    except Exception:
+        return obj
 
 plotly_cdn = 'https://cdn.plot.ly/plotly-latest.min.js'
 
@@ -234,13 +252,18 @@ def write_html_report(html_path: str, ts: str, df_log: pd.DataFrame,
                                 if max_asset:
                                     k, pw, qw = max_asset
                                     if thresh is not None and max_dev >= thresh:
-                                        lead = (f"Primary cause: {k} deviated from {pw*100:.2f}% to {qw*100:.2f}%", 
-                                                f"exceeding the threshold of {thresh*100:.2f}%.")
-                                        lead = ' '.join(lead)
+                                        lead = (
+                                            f"For the asset {k} the initial value was {pw*100:.2f}% "
+                                            f"and the current one is {qw*100:.2f}%. This exceeds the rebalance "
+                                            f"threshold of {thresh*100:.2f}%, so a rebalance is being executed to "
+                                            f"restore target weights."
+                                        )
                                     else:
-                                        lead = (f"Primary change: {k} moved from {pw*100:.2f}% to {qw*100:.2f}%",
-                                                f"(deviation {max_dev*100:.2f}%).")
-                                        lead = ' '.join(lead)
+                                        lead = (
+                                            f"For the asset {k} the value moved from {pw*100:.2f}% to {qw*100:.2f}% "
+                                            f"(deviation {max_dev*100:.2f}%), which did not exceed the configured "
+                                            f"rebalance threshold. A rebalance may still be applied to fine-tune allocations."
+                                        )
                                 else:
                                     if thresh is not None:
                                         lead = f"This rebalance was executed to restore the portfolio to its target weights because one or more assets deviated beyond the configured rebalance threshold ({thresh*100:.2f}%)."
@@ -265,6 +288,93 @@ def write_html_report(html_path: str, ts: str, df_log: pd.DataFrame,
                             buys.append((a, delta, price_map.get(a, None)))
 
                     hf.write(f'<h3>Rebalance {i+1} — {date}</h3>')
+
+                    # Build a plain-English summary paragraph to appear at the start
+                    # of each rebalance section. Include totals and per-asset tax if present.
+                    total_trade = total_trade or 0.0
+                    tcost = tcost or 0.0
+                    tax_total = tax or 0.0
+
+                    # Look for possible per-asset tax maps under common keys
+                    tax_map = tx.get('tax_by_asset') or tx.get('taxes_by_asset') or tx.get('taxes') or tx.get('tax_map') or {}
+
+                    summary_sentences = []
+                    # Lead sentence (why/what)
+                    if lead:
+                        summary_sentences.append(lead)
+
+                    # Totals sentence
+                    summary_sentences.append(
+                        f"In total, this rebalance executed approximately ${total_trade:.2f} of trades, "
+                        f"incurring ${tcost:.2f} in transaction costs and ${tax_total:.2f} in taxes."
+                    )
+
+                    # Per-asset notes for sells/buys with trade values and taxes when available
+                    asset_notes = []
+                    for a, delta, price in sells:
+                        tradev = (tx.get('trade_values') or {}).get(a, None)
+                        tradev_str = f", for a trade value of ${tradev:.2f}" if isinstance(tradev, (int, float)) else ""
+                        tax_a = None
+                        if isinstance(tax_map, dict):
+                            tax_a = tax_map.get(a)
+                        tax_str = f" and paid ${tax_a:.2f} in taxes" if isinstance(tax_a, (int, float)) and tax_a != 0 else ""
+                        asset_notes.append(f"Sold {abs(delta):.2f} notional of {a}{tradev_str}{tax_str}")
+                    for a, delta, price in buys:
+                        tradev = (tx.get('trade_values') or {}).get(a, None)
+                        tradev_str = f", for a trade value of ${tradev:.2f}" if isinstance(tradev, (int, float)) else ""
+                        asset_notes.append(f"Bought {delta:.2f} notional of {a}{tradev_str}")
+
+                    if asset_notes:
+                        summary_sentences.append(' ; '.join(asset_notes) + '.')
+
+                    plain_summary = ' '.join(summary_sentences)
+                    print(f"DEBUG: writing plain_summary for rebalance {i}: {plain_summary}")
+
+                    def _round_numbers_in_text(text: str, ndigits: int = 2) -> str:
+                        # Replace floating numbers (optionally followed by %) with rounded versions
+                        def _repl(m):
+                            num = m.group(1)
+                            pct = m.group(2) or ''
+                            try:
+                                f = float(num)
+                                if pct == '%':
+                                    return f"{round(f, ndigits):.{ndigits}f}%"
+                                return f"{round(f, ndigits):.{ndigits}f}"
+                            except Exception:
+                                return m.group(0)
+
+                        return re.sub(r'(-?\d+\.\d+)(%)?', _repl, str(text))
+
+                    def _render_summary_to_html(text: str) -> str:
+                        # escape HTML and preserve line breaks and bullet lines starting with "- "
+                        pieces = []
+                        in_list = False
+                        for raw_ln in str(text).splitlines():
+                            ln = raw_ln.rstrip()
+                            if ln.lstrip().startswith('- '):
+                                # list item
+                                if not in_list:
+                                    pieces.append('<ul>')
+                                    in_list = True
+                                item = ln.lstrip()[2:]
+                                pieces.append(f'<li>{html.escape(item)}</li>')
+                            else:
+                                if in_list:
+                                    pieces.append('</ul>')
+                                    in_list = False
+                                if ln.strip() == '':
+                                    pieces.append('<br/>')
+                                else:
+                                    pieces.append(f'<p>{html.escape(ln)}</p>')
+                        if in_list:
+                            pieces.append('</ul>')
+                        return ''.join(pieces)
+
+                    rounded_plain = _round_numbers_in_text(plain_summary, 2)
+                    rendered = _render_summary_to_html(rounded_plain)
+                    hf.write('<!--DEBUG:SUMMARY_START-->')
+                    hf.write(f'<div class="summary"><em>{rendered}</em></div>')
+                    hf.write('<!--DEBUG:SUMMARY_END-->')
 
                     parts = [lead]
                     if sells:
@@ -295,8 +405,13 @@ def write_html_report(html_path: str, ts: str, df_log: pd.DataFrame,
                     except Exception:
                         pass
 
+                    # Round numbers inside the 'lead' text and escape for HTML
+                    try:
+                        rounded_lead = _round_numbers_in_text(lead, 2) if lead else lead
+                    except Exception:
+                        rounded_lead = lead
                     hf.write('<ul>')
-                    hf.write(f'<li><strong>Reason:</strong> {lead}</li>')
+                    hf.write(f'<li><strong>Reason:</strong> {html.escape(str(rounded_lead))}</li>')
 
                     if sells:
                         hf.write('<li><strong>Sells:</strong><ul>')
@@ -343,6 +458,24 @@ def write_html_report(html_path: str, ts: str, df_log: pd.DataFrame,
             # Inject data as JSON and create Plotly plots
             hf.write('<script>')
             hf.write(f'var dates = {json.dumps(dates)};')
+            # Ensure numeric arrays/dicts don't have more than 2 decimal places
+            try:
+                compound = _round_numbers(compound, 2)
+            except Exception:
+                pass
+            try:
+                totvalue = _round_numbers(totvalue, 2)
+            except Exception:
+                pass
+            try:
+                final_w = _round_numbers(final_w, 2)
+            except Exception:
+                pass
+            try:
+                pies = _round_numbers(pies, 2)
+            except Exception:
+                pass
+
             hf.write(f'var compound = {json.dumps(compound)};')
             hf.write(f'var totvalue = {json.dumps(totvalue)};')
             hf.write(f'var final_w = {json.dumps(final_w)};')
@@ -367,6 +500,14 @@ def write_html_report(html_path: str, ts: str, df_log: pd.DataFrame,
                                 initial_w[str(k)] = 0.0
                     except Exception:
                         initial_w = {}
+            try:
+                initial_w = _round_numbers(initial_w, 2)
+            except Exception:
+                pass
+            try:
+                asset_trade_totals = _round_numbers(asset_trade_totals, 2)
+            except Exception:
+                pass
             hf.write(f'var initial_w = {json.dumps(initial_w)};')
             hf.write(f'var asset_trade_totals = {json.dumps(asset_trade_totals)};')
 

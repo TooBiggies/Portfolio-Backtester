@@ -43,7 +43,7 @@ EXP_RATE = 0.002
 # - tax rate on realized gains (fractional)
 TAX_RATE = 0.26
 # - rebalance threshold per-asset (absolute difference in weight)
-REBALANCE_THRESHOLD = 0.05
+REBALANCE_THRESHOLD = 0.1
 # - whether to normalize stock prices at t0 (True/False)
 STOCK_PRICE_NORMALIZATION = True
 
