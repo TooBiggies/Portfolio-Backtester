@@ -11,13 +11,16 @@ class Portfolio:
         self.initial_value = initial_value
 
     @property
-    def assets(self): return self.holdings.index
+    def assets(self): 
+        return self.holdings.index
 
     @property
-    def assets_values(self): return self.holdings * self.prices
+    def assets_values(self): 
+        return self.holdings * self.prices
     
     @property
-    def value(self): return self.assets_values.sum()  # Gross = TotValue
+    def value(self): 
+        return self.assets_values.sum()  # Gross = TotValue
         
     @property
     def weights(self):
@@ -59,36 +62,49 @@ class Rebalancer:
         self.threshold = threshold
         self.tax_rate = tax_rate
 
-    def rebalance(self, portfolio) -> tuple[float, float]:
+    def rebalance(self, portfolio) -> tuple[float, float, dict]:
+        """
+        Returns: (total_tax, total_cost, trade_deltas)
+        trade_deltas = {asset: monetary_value_of_trade} (positive=buy, negative=sell)
+        """
         delta = self.target_weights - portfolio.weights
         if not np.any(np.abs(delta) > self.threshold):
-            return 0.0, 0.0
+            return 0.0, 0.0, {asset: 0.0 for asset in portfolio.assets}
         
         snapshot_value = portfolio.value
         trades = {
             asset: delta[asset] * snapshot_value / portfolio.prices[asset]
             for asset in portfolio.assets
         }
+        
+        # Calculate monetary value of each trade
+        trade_deltas = {
+            asset: units * portfolio.prices[asset] 
+            for asset, units in trades.items()
+        }
+        
         total_tax, total_cost = 0.0, 0.0
         for asset, units in trades.items():
             if units < 0:
                 fee, tax = portfolio.sell(portfolio.prices[asset], asset, -units, self.tax_rate)
                 total_tax += tax
                 total_cost += fee
-            else:
+            elif units > 0:
                 fee = portfolio.buy(portfolio.prices[asset], asset, units)
                 total_cost += fee
-        return total_tax, total_cost
-
+        
+        return total_tax, total_cost, trade_deltas
 
 
 class PortfolioTracker:
-    def __init__(self):
+    def __init__(self, asset_columns: list):
         self.prev_net_value = None
         self.compound_factor = 1.0
         self.log = []
+        self.delta_log = []
+        self.asset_columns = asset_columns  # Exact column order for Excel
 
-    def update(self, portfolio: Portfolio, date, taxes=0.0, costs=0.0):
+    def update(self, portfolio: Portfolio, date, taxes=0.0, costs=0.0, trade_deltas=None):
         curr_net = portfolio.value - taxes - costs
         
         if self.prev_net_value is None:
@@ -100,18 +116,39 @@ class PortfolioTracker:
         
         self.compound_factor *= (1.0 + daily_ret)
         
-        # Log entry
+        # Build asset value row (align with expected columns)
+        asset_values = portfolio.assets_values.reindex(self.asset_columns, fill_value=0.0)
+        
+        # Log entry for df_log
         self.log.append({
-            'date': date,
-            'TotValue': portfolio.value,
-            'NetTotValue': curr_net,
-            'Taxes': -taxes,  # Negate to match old code sign
-            'TransacCost': -costs,
+            'Date': date,
             'Return': daily_ret,
-            'CompoundReturn': self.compound_factor
+            'Compound Return': self.compound_factor,
+            'TotValue': portfolio.value,
+            'Taxes': -taxes,  # Negate to match original Excel sign convention
+            'TransacCost': -costs,
+            **{col: asset_values[col] for col in self.asset_columns}
         })
+        
+        # Log entry for df_log_delta
+        if trade_deltas is None:
+            trade_deltas = {col: 0.0 for col in self.asset_columns}
+        
+        # Align trade deltas with asset columns, keep internal sign (positive=buy, negative=sell)
+        delta_row = {col: trade_deltas.get(col, 0.0) for col in self.asset_columns}
+        delta_row['Date'] = date
+        self.delta_log.append(delta_row)
         
         self.prev_net_value = curr_net
 
-    def to_dataframe(self):
-        return pd.DataFrame(self.log).set_index('date')
+    def to_dataframes(self):
+        df_log = pd.DataFrame(self.log).set_index('Date')
+        df_log_delta = pd.DataFrame(self.delta_log).set_index('Date')
+        
+        # Ensure column order matches Excel
+        log_columns = ['Return', 'Compound Return', 'TotValue', 'Taxes', 'TransacCost'] + self.asset_columns
+        df_log = df_log[log_columns]
+        
+        df_log_delta = df_log_delta[self.asset_columns]
+        
+        return df_log, df_log_delta
