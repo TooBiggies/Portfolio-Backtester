@@ -97,8 +97,8 @@ def run_portfolio_evolution(df_prices: pd.DataFrame,
         # 4. Log state
         tracker.update(portfolio, 
                        date=dates[i], 
-                       taxes=cumulative_tax, 
-                       costs=cumulative_cost, 
+                       taxes=tax, 
+                       costs=cost, 
                        trade_deltas=trade_deltas)
     
     # =============================================================================
@@ -121,6 +121,7 @@ def preprocess_data(df):
     """Preprocess dataframe to match old code expectations"""
     df = df.copy()
     df["Date"] = pd.to_datetime(df["Date"], dayfirst=True, errors="coerce")
+    df = df[(df["Date"]>=pd.to_datetime("2020-01-02"))].copy()
     df = df.reset_index(drop=True)
     return df
 
@@ -182,27 +183,27 @@ if __name__ == "__main__":
     
     # Initial allocation (must sum to 1)
     initial_weights = {
-        'VTSIM': 0.50,
+        'VTSIM': 0.60,
         'SPYSIM': 0.00,
         'VXUSSIM': 0.00,
-        'GLDSIM': 0.00,
-        'CASHX': 0.50,  # Cash as liquidity
+        'GLDSIM': 0.10,
+        'CASHX': 0.00,  # Cash as liquidity
         'SHYSIM': 0.00,
         'IEFSIM': 0.00,
         'TLTSIM': 0.00,
-        'ZROZSIM': 0.00,
+        'ZROZSIM': 0.25,
         'KMLMSIM': 0.00,
-        'DBMFSIM': 0.00,
+        'DBMFSIM': 0.05,
     }
     
     # Run evolution
     df_log, df_log_delta = run_portfolio_evolution(
         df_prices=df_prices,
-        initial_value=100000,
+        initial_value=10000,
         initial_weights=initial_weights,
-        rebalance_threshold=0.05,
+        rebalance_threshold=0.1,
         tax_rate=0.26,
-        brokerage_fee_rate=0.001,
+        brokerage_fee_rate=0.0029,
         asset_columns=list(initial_weights.keys())
     )
     
