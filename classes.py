@@ -179,17 +179,18 @@ class portfolio_evo: #20260131 vincemauro
 
     def update_tax(self,StockPrice):
         """Calcola le imposte sulle plusvalenze realizzate.
-
         Si applica la tassa solo se si vendono quote (`delta_notional < 0`) e il
         prezzo di realizzo è maggiore del `PMC` (plusvalenza). L'importo tassato
-        è somma(quantità venduta * prezzo) * tax_rate.
-        Nota: `delta_notional` è negativo per vendite, quindi l'espressione rispetta
-        il segno e produce un valore positivo delle plusvalenze prima di moltiplicare
-        per `tax_rate`.
+        è la somma delle plusvalenze realizzate per asset, cioè
+        sum( - delta_notional * (price - PMC) for vendite con price > PMC ) * tax_rate.
+        Nota: `delta_notional` è negativo per vendite; l'espressione calcola
+        la plusvalenza positiva prima di moltiplicare per `tax_rate`.
         """
         mask_tax = (self.delta_notional < 0) & (StockPrice > self.PMC)
-        if np.sum(mask_tax) >0:
-            self.tax = (self.delta_notional*StockPrice)[mask_tax].sum()*self.tax_rate
+        if np.sum(mask_tax) > 0:
+            # realized gains: for sells (delta_notional < 0) compute -(delta * (price - PMC))
+            realized_gains = - (self.delta_notional * (StockPrice - self.PMC))[mask_tax].sum()
+            self.tax = float(realized_gains) * float(self.tax_rate)
         else:
             self.tax = 0.0
 
