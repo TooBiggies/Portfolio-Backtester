@@ -11,6 +11,8 @@ Un tool per simulare l'andamento di portafogli d'investimento pensato specificam
 * **Rendimenti reali (Netti):** Confronto tra la crescita lorda del mercato e il rendimento effettivamente disponibile per l'investitore dopo tasse e costi.
 * **Analisi dei ribilanciamenti:** Valutazione dell'impatto fiscale e commissionale quando si vendono quote per riportare il portafoglio all'asset allocation desiderata.
 
+## Come testare:
+Eseguire il notebook Backtester.ipynb. L'ultima cella genera dei widget interattivi che permettono di scegliere la asset allocation desiderata. Cliccando su Esegui Backtest, il codice restituisce l'output del backtest e genera due file xlsx che tracciano l'allocazione del portafoglio e i ribilanciament.
 ---
 
 ## ⚠️ Nota
