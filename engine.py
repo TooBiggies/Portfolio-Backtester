@@ -11,15 +11,15 @@ class Portfolio:
         self.initial_value = initial_value
 
     @classmethod
-    def from_initial_weights(cls, initial_prices, initial_value, initial_weights, brokerage_fee_rate):
+    def from_weights(cls, prices, value, weights, brokerage_fee_rate):
         """
         Factory method to create a Portfolio and immediately allocate 
         capital based on target weights at T=0.
         
         Args:
-            initial_prices (pd.Series): Prices of assets at T=0.
-            initial_value (float): Total starting capital.
-            initial_weights (dict): Target allocation weights {asset: weight}.
+            prices (pd.Series): Prices of assets at T=0.
+            value (float): Total starting capital.
+            weights (dict): Target allocation weights {asset: weight}.
             brokerage_fee_rate (float): Fee rate for transactions.
             
         Returns:
@@ -27,18 +27,18 @@ class Portfolio:
         """
         # 1. Instantiate the empty portfolio
         portfolio = cls(
-            prices=initial_prices, 
-            initial_value=initial_value, 
+            prices=prices, 
+            initial_value=value, 
             brokerage_fee_rate=brokerage_fee_rate
         )
         
         # 2. Allocate capital based on weights
-        for asset, weight in initial_weights.items():
+        for asset, weight in weights.items():
             # Ensure asset exists in price data and weight is positive
             if asset in portfolio.assets and weight > 0:
-                price = initial_prices[asset]
+                price = prices[asset]
                 if price > 0:
-                    units = (initial_value * weight) / price
+                    units = (value * weight) / price
                     # Execute the buy order internally
                     portfolio.buy(price, asset, units)
         

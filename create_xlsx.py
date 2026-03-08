@@ -117,11 +117,12 @@ def load_data():
     return pd.read_csv("./Timeseries.csv", sep=";")
 
 
-def preprocess_data(df):
+def preprocess_data(df, begin_date="2020-01-02", end_date="2026-01-20"):
     """Preprocess dataframe to match old code expectations"""
     df = df.copy()
     df["Date"] = pd.to_datetime(df["Date"], dayfirst=True, errors="coerce")
-    df = df[(df["Date"]>=pd.to_datetime("2020-01-02"))].copy()
+    df = df[(df["Date"]>=pd.to_datetime(begin_date))].copy()
+    df = df[(df["Date"]<=pd.to_datetime(end_date))].copy()
     df = df.reset_index(drop=True)
     return df
 
