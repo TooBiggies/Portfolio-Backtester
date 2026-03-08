@@ -46,6 +46,9 @@ TAX_RATE = 0.26
 REBALANCE_THRESHOLD = 0.1
 # - whether to normalize stock prices at t0 (True/False)
 STOCK_PRICE_NORMALIZATION = True
+# - whether to apply minusvalenze (capital-loss carry-forward, art. 68 TUIR)
+#   Disabled by default; enable here or pass --calcola-minusvalenze on the CLI
+CALCOLA_MINUSVALENZE = False
 
 # Directory where markdown reports are written
 REPORTS_DIR = "reports"

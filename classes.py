@@ -6,10 +6,9 @@ portafoglio costruito su una serie storica di prezzi. La classe gestisce:
 - calcolo del notional (numero di unità) per asset,
 - controllo e applicazione del ribilanciamento verso pesi target,
 - calcolo di costi di transazione e imposte sulle plusvalenze realizzate,
-- tracking del prezzo medio di carico (PMC) per il calcolo delle imposte.
-
-Il file non modifica la logica di calcolo originale, aggiunge solo
-docstring e spiegazioni sulle formule usate.
+- tracking del prezzo medio di carico (PMC) per il calcolo delle imposte,
+- riporto delle minusvalenze realizzate fino a 4 anni (art. 68 TUIR),
+- applicazione pro-rata giornaliera delle spese ricorrenti (exp_rate).
 """
 
 import numpy as np
@@ -40,14 +39,16 @@ class portfolio_evo: #20260131 vincemauro
     colonne_escluse = ["Date"]  # colonne da escludere nell'import del DF nell'oggetto
 
     def __init__(self, initial_balance, transac_cost_rate, tax_rate, exp_rate, rebalance_threshold,
-                 initial_w, imported_dataframe, start_date=None, end_date=None, stock_price_normalization = True):
+                 initial_w, imported_dataframe, start_date=None, end_date=None, stock_price_normalization = True,
+                 calcola_minusvalenze: bool = False):
         """Inizializza lo stato del portafoglio.
 
         Parametri principali:
         - initial_balance: capitale iniziale (valore monetario)
         - transac_cost_rate: % di costo applicata alle operazioni (commissioni+spread)
         - tax_rate: aliquota fiscale sulle plusvalenze realizzate
-        - exp_rate: spese correnti (tracking + bollo) - non usato direttamente nei calcoli qui
+        - exp_rate: spese correnti annue (tracking difference + imposta di bollo); applicate
+          pro-rata su base giorni di calendario tramite `update_exp_cost()`
         - rebalance_threshold: soglia su deviazione di peso che attiva il ribilanciamento
         - initial_w: pesi target (list o array) con lunghezza pari al numero di asset
         - imported_dataframe: DataFrame contenente colonna 'Date' e colonne prezzi per asset
@@ -61,6 +62,10 @@ class portfolio_evo: #20260131 vincemauro
         self.TransactionalCost        = 0.0                     # Inizializzazione costo di transazione progressivo
         self.tax_rate                 = tax_rate                # Percentuale tassazione plusvalenza
         self.exp_rate                 = exp_rate                # Tasso spesa annuo in cui inserire la somma di tracking error + 0.2% di imposta di bollo sul dossier titoli
+        self.exp_cost                 = 0.0                     # Costo ricorrente pro-rata dell'ultimo periodo
+        self.loss_carryforward        = {}                      # Riporto minusvalenze: {anno: importo} (art. 68 TUIR, max 4 anni)
+        self.calcola_minusvalenze     = calcola_minusvalenze    # Se False (default) il riporto è disabilitato
+        self._prev_date               = None                    # Data dell'ultimo aggiornamento spese ricorrenti
         self.tax                      = 0.0                     # Inizializzazione tassazione progressiva
         self.rebalance_threshold      = rebalance_threshold     # Soglia per effettuare il ribilanciamento dei pesi
         self.df                       = imported_dataframe
@@ -113,11 +118,13 @@ class portfolio_evo: #20260131 vincemauro
             liq_tc = (abs(self.notional) * StockPrice).sum() * self.transactional_cost_rate
         except Exception:
             liq_tc = 0.0
-        # tax on full liquidation: sum over assets of max((price - PMC) * notional, 0) * tax_rate
+        # tax on full liquidation: gains net of available carry-forward losses
         try:
             gains = (StockPrice - self.PMC) * self.notional
-            taxable = gains[gains > 0].sum()
-            tax_liab = float(taxable) * float(self.tax_rate)
+            taxable = float(gains[gains > 0].sum())
+            available_offset = sum(self.loss_carryforward.values())
+            net_taxable = max(0.0, taxable - available_offset)
+            tax_liab = net_taxable * float(self.tax_rate)
         except Exception:
             tax_liab = 0.0
         self.NetValue = float(gross) + float(self.immediate_payments) - float(liq_tc) - float(tax_liab)
@@ -177,22 +184,76 @@ class portfolio_evo: #20260131 vincemauro
         self.PMC_weight[mask_buy] += self.delta_notional[mask_buy]
         self.PMC[mask_buy] /= self.PMC_weight[mask_buy]
 
-    def update_tax(self,StockPrice):
-        """Calcola le imposte sulle plusvalenze realizzate.
-        Si applica la tassa solo se si vendono quote (`delta_notional < 0`) e il
-        prezzo di realizzo è maggiore del `PMC` (plusvalenza). L'importo tassato
-        è la somma delle plusvalenze realizzate per asset, cioè
-        sum( - delta_notional * (price - PMC) for vendite con price > PMC ) * tax_rate.
-        Nota: `delta_notional` è negativo per vendite; l'espressione calcola
-        la plusvalenza positiva prima di moltiplicare per `tax_rate`.
+    def update_tax(self, StockPrice, current_date=None):
+        """Calcola le imposte sulle plusvalenze realizzate, con riporto minusvalenze.
+
+        Per ogni vendita (`delta_notional < 0`) calcola il risultato per asset:
+          per-asset = -(delta * (price - PMC))  # positivo = plusvalenza, negativo = minusvalenza
+
+        Le plusvalenze e minusvalenze della stessa operazione si compensano prima
+        (netting intra-operazione). Se `current_date` è fornita, attiva il regime
+        dello "zainetto fiscale" (art. 68 TUIR): le minusvalenze nette vengono
+        accumulate per anno e usate per compensare le plusvalenze future, a scalare
+        dai crediti più vecchi, con scadenza a 4 anni dal realizzo.
+        Se `current_date` è None, si usa un percorso semplificato senza riporto
+        (compatibilità backward con test diretti).
         """
-        mask_tax = (self.delta_notional < 0) & (StockPrice > self.PMC)
-        if np.sum(mask_tax) > 0:
-            # realized gains: for sells (delta_notional < 0) compute -(delta * (price - PMC))
-            realized_gains = - (self.delta_notional * (StockPrice - self.PMC))[mask_tax].sum()
-            self.tax = float(realized_gains) * float(self.tax_rate)
-        else:
+        mask_sell = self.delta_notional < 0
+        if int(np.sum(mask_sell)) == 0:
             self.tax = 0.0
+            return
+
+        # Per ogni vendita: positivo = plusvalenza, negativo = minusvalenza
+        by_asset = -(self.delta_notional * (StockPrice - self.PMC))[mask_sell]
+        realized_gains = float(by_asset[by_asset > 0].sum())
+        realized_losses = float((-by_asset[by_asset < 0]).sum())  # importo positivo
+
+        if current_date is None:
+            # percorso senza riporto (compatibilità backward)
+            self.tax = float(realized_gains) * float(self.tax_rate)
+            return
+
+        if not self.calcola_minusvalenze:
+            # riporto minusvalenze disabilitato: tassa solo le plusvalenze nette dell'operazione
+            net = realized_gains - realized_losses
+            self.tax = float(max(0.0, net)) * float(self.tax_rate)
+            return
+
+        current_year = pd.Timestamp(current_date).year
+        # scadenza crediti più vecchi di 4 anni (art. 68 TUIR)
+        self.loss_carryforward = {
+            y: v for y, v in self.loss_carryforward.items()
+            if current_year - y <= 4
+        }
+
+        # netting intra-operazione: le perdite dello stesso evento compensano i guadagni
+        same_tx_net = realized_gains - realized_losses
+        if same_tx_net >= 0:
+            net_gains_after_netting = same_tx_net
+            new_carry_losses = 0.0
+        else:
+            net_gains_after_netting = 0.0
+            new_carry_losses = -same_tx_net
+
+        # compensazione con il riporto disponibile (dal credito più vecchio)
+        available = sum(self.loss_carryforward.values())
+        usable = min(available, net_gains_after_netting)
+        net_taxable = net_gains_after_netting - usable
+        remaining = usable
+        for y in sorted(self.loss_carryforward.keys()):
+            if remaining <= 1e-10:
+                break
+            used = min(self.loss_carryforward[y], remaining)
+            self.loss_carryforward[y] -= used
+            remaining -= used
+        self.loss_carryforward = {y: v for y, v in self.loss_carryforward.items() if v > 1e-10}
+
+        # accumula nuove minusvalenze nette nel bucket dell'anno corrente
+        if new_carry_losses > 0:
+            self.loss_carryforward[current_year] = (
+                self.loss_carryforward.get(current_year, 0.0) + new_carry_losses
+            )
+        self.tax = float(net_taxable) * float(self.tax_rate)
 
     def update_transactional_cost(self, StockPrice):
         """Calcola il costo transazionale come percentuale del controvalore scambiato.
@@ -203,7 +264,7 @@ class portfolio_evo: #20260131 vincemauro
         """
         self.TransactionalCost = -(abs(self.delta_notional)*StockPrice).sum()*self.transactional_cost_rate
 
-    def update_notional_tax_transaccost(self, StockPrice):
+    def update_notional_tax_transaccost(self, StockPrice, current_date=None):
         """Calcola e applica la variazione di notional per ribilanciare ai pesi target.
 
         Steps:
@@ -212,6 +273,7 @@ class portfolio_evo: #20260131 vincemauro
         3. calcola imposte e costi transazionali
         4. aggiorna il `notional` (numero di unità) con `notional += delta_notional`
 
+        `current_date` è passata a `update_tax` per attivare il riporto minusvalenze.
         Nota: l'ordine è importante perché PMC deve riflettere gli acquisti prima di
         calcolare eventuali imposte su vendite; qui si usa l'ordine implementato
         originariamente dall'autore.
@@ -220,7 +282,7 @@ class portfolio_evo: #20260131 vincemauro
         self.update_PMC(StockPrice)
         # compute taxes and transaction costs (these are amounts, tax/TransactionalCost
         # are negative when they represent payments)
-        self.update_tax(StockPrice)
+        self.update_tax(StockPrice, current_date=current_date)
         self.update_transactional_cost(StockPrice)
         # update notional quantities
         self.notional += self.delta_notional
@@ -233,9 +295,32 @@ class portfolio_evo: #20260131 vincemauro
     def reset_tax_transaccost(self):
         self.tax = 0.0
         self.TransactionalCost = 0.0
+        self.exp_cost = 0.0
 
     def reset_delta_notional(self):
         self.delta_notional = 0.0
+
+    def update_exp_cost(self, current_date, StockPrice):
+        """Applica le spese ricorrenti annuali (imposta di bollo + tracking difference) pro-rata.
+
+        Il costo è proporzionale al valore di mercato del portafoglio e ai giorni di
+        calendario trascorsi dall'ultima chiamata (giorni / 365.25). Viene sottratto
+        come pagamento immediato (valore negativo in `immediate_payments`).
+        Al primo invoco inizializza la data di riferimento senza addebitare costi.
+        """
+        current_date = pd.Timestamp(current_date)
+        if self._prev_date is None:
+            self._prev_date = current_date
+            self.exp_cost = 0.0
+            return
+        days = (current_date - self._prev_date).days
+        if days <= 0:
+            self.exp_cost = 0.0
+            return
+        gross = self.calculate_TotValue(StockPrice)
+        self.exp_cost = -float(gross) * float(self.exp_rate) * (days / 365.25)
+        self.immediate_payments += self.exp_cost
+        self._prev_date = current_date
 
     def check_rebalance(self):
         """Controlla se qualche asset supera la soglia di deviazione e richiede ribilanciamento.

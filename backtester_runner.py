@@ -10,7 +10,7 @@ from backtester_load_config import load_config
 from backtester_report_creation import create_reports
 
 
-def run_backtest(verbose: bool = False):
+def run_backtest(verbose: bool = False, calcola_minusvalenze: bool = False):
     logger = logging.getLogger('backtester')
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
     if not logger.handlers:
@@ -28,6 +28,8 @@ def run_backtest(verbose: bool = False):
     initial_balance = cfg.CAPITAL
     start_date = cfg.START_DATE
     end_date = cfg.END_DATE
+    # CLI flag takes priority; fall back to config value
+    calcola_minusvalenze = calcola_minusvalenze or getattr(cfg, 'CALCOLA_MINUSVALENZE', False)
 
     logger.debug("Imported dataframe shape: %s", imported_dataframe.shape)
 
@@ -40,7 +42,8 @@ def run_backtest(verbose: bool = False):
                         imported_dataframe= imported_dataframe,
                         start_date = start_date,
                         end_date = end_date,
-                        stock_price_normalization= cfg.STOCK_PRICE_NORMALIZATION)
+                        stock_price_normalization= cfg.STOCK_PRICE_NORMALIZATION,
+                        calcola_minusvalenze=calcola_minusvalenze)
 
     logger.debug("Portfolio initialized: IndexName=%s", ptf.IndexName)
 
@@ -147,7 +150,7 @@ def run_backtest(verbose: bool = False):
                 pre_notional = None
                 pre_w = None
 
-            ptf.update_notional_tax_transaccost(StockPrice)
+            ptf.update_notional_tax_transaccost(StockPrice, current_date=ptf.date[i])
 
             try:
                 post_notional = ptf.notional.copy()
@@ -168,6 +171,7 @@ def run_backtest(verbose: bool = False):
                     'total_trade_value': total_trade_value,
                     'transactional_cost': ptf.TransactionalCost,
                     'tax': ptf.tax,
+                    'loss_carryforward': dict(ptf.loss_carryforward),
                     'pre_w': pre_w.to_dict() if pre_w is not None else None,
                     'post_w': post_w.to_dict() if post_w is not None else None,
                 })
@@ -178,6 +182,7 @@ def run_backtest(verbose: bool = False):
             if snap_after:
                 rebalance_explanations.append(f"### Portfolio snapshot after {ptf.date[i].date()}\n" + snap_after + "\n")
 
+        ptf.update_exp_cost(ptf.date[i], StockPrice)
         ptf.update_Return(StockPrice)
         ptf.update_TotValue(StockPrice)
         ptf.update_NetTotValue(StockPrice)
@@ -187,6 +192,8 @@ def run_backtest(verbose: bool = False):
         df_log.loc[ptf.date[i], "TotValue"] = ptf.TotValue
         df_log.loc[ptf.date[i], "Taxes"] = ptf.tax
         df_log.loc[ptf.date[i], "TransacCost"] = ptf.TransactionalCost
+        df_log.loc[ptf.date[i], "ExpCost"] = ptf.exp_cost
+        df_log.loc[ptf.date[i], "LossCarryforward"] = sum(ptf.loss_carryforward.values())
         df_log.loc[ptf.date[i], ptf.IndexName] = ptf.AssetValue
         df_log_delta.loc[ptf.date[i], ptf.IndexName] = ptf.delta_notional * StockPrice
 
