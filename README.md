@@ -11,8 +11,11 @@ Files:
 Run in a virtual environment (this repo created `.venv`):
 
 ```bash
+python3 -m venv .venv
 # activate venv
 source .venv/bin/activate
+
+pip install -r requirements.txt
 
 # run the backtest (will write output_ptf.xlsx and output_ptf_delta.xlsx)
 python backtester.py
@@ -20,7 +23,6 @@ python backtester.py
 # run tests
 pytest -q
 ```
-
 Jupyter:
 - A Jupyter server can be started from the venv with `.venv/bin/jupyter lab --no-browser --ip=127.0.0.1 --port=8888`.
 - Then open `Backtester.ipynb` in the web UI.
