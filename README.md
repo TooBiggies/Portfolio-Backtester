@@ -17,7 +17,7 @@ Eseguire il notebook Backtester.ipynb. L'ultima cella genera dei widget interatt
 ## Come testare (codespace):
 pullare le modifiche da questo branch:
 
-`git pull dev-mcaresein`
+`git pull develop`
 
 creare virtual environment:
 
