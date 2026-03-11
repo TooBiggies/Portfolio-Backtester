@@ -11,7 +11,6 @@ class portfolio_evo: #20260131 vincemauro
 
     def __init__(self, initial_balance, transac_cost_rate, tax_rate, exp_rate, rebalance_threshold,
                  initial_w, imported_dataframe, start_date=None, end_date=None, stock_price_normalization = True):
-        self.StartValue               = initial_balance         # Valore iniziale del PTF - vincemauro 20260131
         self.TotValue                 = initial_balance         # Valore totale del PTF
         self.NetTotValue              = self.TotValue           # Valore totale del PTF sottraendo  tasse e costi di transazione
         self.transactional_cost_rate  = transac_cost_rate       # Percentuale costi di transazione come somma %commissioni e %spread
@@ -32,10 +31,7 @@ class portfolio_evo: #20260131 vincemauro
             
         self.df = self.df.reset_index(drop=True)
 
-        self.IndexName         = [                              # Set dei nomi degli asset in PTF
-            col for col in self.df.columns
-            if col not in self.colonne_escluse
-        ]
+        self.IndexName = [col for col in self.df.columns if col not in self.colonne_escluse ]
 
         if stock_price_normalization:                                                       # Inizializzazione prezzi degli asset (via normalizzazione o non)
             self.StockPrice = self.df.loc[:,self.IndexName]/self.df.loc[0,self.IndexName]
@@ -101,10 +97,13 @@ class portfolio_evo: #20260131 vincemauro
 
     def update_tax(self,StockPrice):
         mask_tax = (self.delta_notional < 0) & (StockPrice > self.PMC)
+        plusval = pd.Series(data = 0., index = self.IndexName)
+
         if np.sum(mask_tax) >0:
-            self.tax = (self.delta_notional*StockPrice)[mask_tax].sum()*self.tax_rate
-        else:
-            self.tax = 0.0
+            plusval[mask_tax] = -(self.delta_notional*(StockPrice - self.PMC))[mask_tax]
+            if sum(plusval[mask_tax] <= 0 ) > 0:
+                print("Errore. Plusvalenza negativa")
+            self.tax += -plusval.sum()*self.tax_rate
 
     def update_transactional_cost(self, StockPrice):
         self.TransactionalCost = -(abs(self.delta_notional)*StockPrice).sum()*self.transactional_cost_rate
