@@ -21,7 +21,7 @@ Questo strumento è creato a scopo informativo e di studio personale. Non fornis
 Eseguire il notebook Backtester.ipynb. L'ultima cella genera dei widget interattivi che permettono di scegliere la asset allocation desiderata. Cliccando su Esegui Backtest, il codice restituisce l'output del backtest e genera due file xlsx che tracciano l'allocazione del portafoglio e i ribilanciament.
 
 ## Come testare (codespace):
-Clicca sul tasto verde "<> Code" e poi su "+", si aprirà una macchina virtuale su cui è clonato il branch.
+Cliccare sul tasto verde "<> Code" e poi su "+", si aprirà una macchina virtuale su cui è clonato il branch.
 Posizionarsi nel terminale in basso e digitare i comandi descritti.
 
 pullare le modifiche da questo branch:
