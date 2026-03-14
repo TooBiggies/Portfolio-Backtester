@@ -3,18 +3,7 @@ import matplotlib.pyplot as plt
 
 from engine import Portfolio, Rebalancer, PortfolioTracker
 
-
-def preprocess_data(df, begin_date="2020-01-02", end_date="2026-01-20"):
-    """Preprocess dataframe to match old code expectations"""
-    df = df.copy()
-    df["Date"] = pd.to_datetime(df["Date"], dayfirst=True, errors="coerce")
-    df = df[(df["Date"]>=pd.to_datetime(begin_date))].copy()
-    df = df[(df["Date"]<=pd.to_datetime(end_date))].copy()
-    df = df.reset_index(drop=True)
-    return df
-
-
-def prepare_price_dataframe(df_raw, asset_columns=None, date_column='Date'):
+def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=None, date_column='Date'):
     """
     Convert loaded CSV into price DataFrame with Date as index.
 
@@ -32,7 +21,17 @@ def prepare_price_dataframe(df_raw, asset_columns=None, date_column='Date'):
     df_prices : pd.DataFrame
         DataFrame with Date as index and assets as columns
     """
-    df = df_raw.copy()
+
+    if begin_date is None:
+        begin_date = pd.to_datetime(df.dropna()[date_column].min())
+    if end_date is None:
+        end_date = pd.to_datetime(df.dropna()[date_column].max())
+
+    df = df.copy()
+    df[date_column] = pd.to_datetime(df[date_column], dayfirst=True, errors="coerce")
+    df = df[(df[date_column]>=pd.to_datetime(begin_date))].copy()
+    df = df[(df[date_column]<=pd.to_datetime(end_date))].copy()
+    df = df.reset_index(drop=True)
 
     if asset_columns is None:
         # Auto-detect: exclude Date column
@@ -41,10 +40,10 @@ def prepare_price_dataframe(df_raw, asset_columns=None, date_column='Date'):
     # Set Date as index
     df_prices = df.set_index(date_column)[asset_columns]
 
-    return df_prices
+    return df_prices, begin_date, end_date
 
 
-def backtest(initial_value, begin_date, end_date, weights, brokerage_fee_rate=0.0029, rebalance_threshold=0.1, tax_rate=0.26):
+def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0.0029, rebalance_threshold=0.1, tax_rate=0.26):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -83,7 +82,7 @@ def backtest(initial_value, begin_date, end_date, weights, brokerage_fee_rate=0.
     """
 
     asset_columns=list(weights.keys())
-    prices = prepare_price_dataframe(preprocess_data(pd.read_csv("./Timeseries.csv", sep=";"), begin_date=begin_date, end_date=end_date), asset_columns=asset_columns)
+    prices, begin_date, end_date = prepare_price_dataframe(pd.read_csv("./Timeseries.csv", sep=";"), begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
     dates = prices.index
     initial_prices = prices.iloc[0]
 
@@ -143,9 +142,9 @@ if __name__ == '__main__':
     }
 
     backtest(initial_value=10000,
+         weights=weights,
          begin_date = pd.to_datetime("2020-01-02"),
          end_date = pd.to_datetime("2025-09-01"),
-         weights=weights,
          brokerage_fee_rate=0.0029,
          rebalance_threshold=0.1,
          tax_rate=0.26
