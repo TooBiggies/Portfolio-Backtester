@@ -1,15 +1,7 @@
-import numpy as np
 import pandas as pd
-import os
-import sys
 import matplotlib.pyplot as plt
 
-from engine import *
-
-
-def load_data():
-    return pd.read_csv("./Timeseries.csv", sep=";")
-
+from engine import Portfolio, Rebalancer, PortfolioTracker
 
 
 def preprocess_data(df, begin_date="2020-01-02", end_date="2026-01-20"):
@@ -25,7 +17,7 @@ def preprocess_data(df, begin_date="2020-01-02", end_date="2026-01-20"):
 def prepare_price_dataframe(df_raw, asset_columns=None, date_column='Date'):
     """
     Convert loaded CSV into price DataFrame with Date as index.
-    
+
     Parameters:
     -----------
     df_raw : pd.DataFrame
@@ -34,32 +26,68 @@ def prepare_price_dataframe(df_raw, asset_columns=None, date_column='Date'):
         Which columns to use as asset prices (exclude Date, etc.)
     date_column : str
         Name of the date column
-    
+
     Returns:
     --------
     df_prices : pd.DataFrame
         DataFrame with Date as index and assets as columns
     """
     df = df_raw.copy()
-    
+
     if asset_columns is None:
         # Auto-detect: exclude Date column
         asset_columns = [col for col in df.columns if col != date_column]
-    
+
     # Set Date as index
     df_prices = df.set_index(date_column)[asset_columns]
-    
+
     return df_prices
 
 
 def backtest(initial_value, begin_date, end_date, weights, brokerage_fee_rate=0.0029, rebalance_threshold=0.1, tax_rate=0.26):
+    """
+    Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
+    accounting for brokerage fees, taxes, and annual costs.
+
+    Parameters
+    ----------
+    initial_value : float
+        The initial amount of capital invested in the portfolio.
+
+    begin_date : str
+        The start date of the backtest in 'YYYY-MM-DD' format.
+
+    end_date : str
+        The end date of the backtest in 'YYYY-MM-DD' format.
+
+    weights : dict
+        Dictionary of target weights for each asset. Keys are asset names, values are weights
+        as decimals (sum should typically equal 1).
+
+    brokerage_fee_rate : float, optional, default=0.0029
+        Fractional cost of executing trades (per transaction), applied at rebalancing.
+
+    rebalance_threshold : float, optional, default=0.1
+        Maximum deviation from target weights before triggering a rebalance.
+        Example: 0.1 triggers a rebalance if an asset weight differs by ±10% from its target.
+
+    tax_rate : float, optional, default=0.26
+        Capital gains tax rate applied on realized gains during rebalancing.
+
+    Returns
+    -------
+    None
+        - Outputs are saved to Excel files ('output_ptf.xlsx' and 'output_ptf_delta.xlsx') and a PNG plot ('plot.png').
+        - Saves a semilogarithmic plot of the compound return over time.
+        - Prints summary statistics to the console:
+    """
 
     asset_columns=list(weights.keys())
-    prices = prepare_price_dataframe(preprocess_data(load_data(), begin_date=begin_date, end_date=end_date), asset_columns=asset_columns)
+    prices = prepare_price_dataframe(preprocess_data(pd.read_csv("./Timeseries.csv", sep=";"), begin_date=begin_date, end_date=end_date), asset_columns=asset_columns)
     dates = prices.index
     initial_prices = prices.iloc[0]
 
-    # Initialize tracker and rebalancer 
+    # Initialize tracker and rebalancer
     tracker = PortfolioTracker(asset_columns=asset_columns, begin_date=begin_date)
     rebalancer = Rebalancer(target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 
@@ -72,13 +100,13 @@ def backtest(initial_value, begin_date, end_date, weights, brokerage_fee_rate=0.
     for i in range(1, len(dates)):
         # 1. Update prices
         portfolio.prices = prices.iloc[i]
-        
+
         # 2. Check and execute rebalance
         tax, cost, trade_deltas = rebalancer.rebalance(portfolio)
-        
+
         # 3. Log state
         tracker.update(portfolio, date=dates[i], taxes=tax, costs=cost, trade_deltas=trade_deltas)
-    
+
     df_log, df_log_delta = tracker.to_dataframes()
 
     df_log.to_excel("output_ptf.xlsx")
@@ -93,8 +121,6 @@ def backtest(initial_value, begin_date, end_date, weights, brokerage_fee_rate=0.
     plt.semilogy(df_log.index,df_log['Compound Return'])
     plt.xlabel('Data')
     plt.ylabel('Compound Return %')
-    #plt.title('Grafico')
-    #plt.legend()
     plt.grid(True)
     plt.tight_layout()
     plt.savefig('plot.png')
@@ -115,12 +141,12 @@ if __name__ == '__main__':
         'KMLMSIM': 0.00,
         'DBMFSIM': 0.05,
     }
-    
+
     backtest(initial_value=10000,
-         begin_date = pd.to_datetime("2020-01-02"), 
-         end_date = pd.to_datetime("2025-09-01"), 
-         weights=weights, 
-         brokerage_fee_rate=0.0029, 
-         rebalance_threshold=0.1, 
+         begin_date = pd.to_datetime("2020-01-02"),
+         end_date = pd.to_datetime("2025-09-01"),
+         weights=weights,
+         brokerage_fee_rate=0.0029,
+         rebalance_threshold=0.1,
          tax_rate=0.26
          )
