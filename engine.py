@@ -2,16 +2,17 @@ import pandas as pd
 import numpy as np
 
 class Portfolio:
-    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0.):
+    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., annual_costs_rate: float=0.):
         self.prices = prices
         self.holdings = pd.Series(0.0, index=prices.index)
         self.assets_costs = pd.Series(0.0, index=prices.index)  # For PMC
 
         self.brokerage_fee_rate = brokerage_fee_rate
+        self.annual_costs_rate = annual_costs_rate
         self.initial_value = initial_value
 
     @classmethod
-    def from_weights(cls, prices, value, weights, brokerage_fee_rate):
+    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate):
         """
         Factory method to create a Portfolio and immediately allocate 
         capital based on target weights at T=0.
@@ -29,7 +30,8 @@ class Portfolio:
         portfolio = cls(
             prices=prices, 
             initial_value=value, 
-            brokerage_fee_rate=brokerage_fee_rate
+            brokerage_fee_rate=brokerage_fee_rate, 
+            annual_costs_rate=0.002
         )
         
         fees = 0.
@@ -48,6 +50,10 @@ class Portfolio:
     @property
     def assets(self): 
         return self.holdings.index
+
+    @property
+    def annual_costs(self): 
+        return self.value*self.annual_costs_rate
 
     @property
     def assets_values(self): 
@@ -132,12 +138,15 @@ class Rebalancer:
 
 
 class PortfolioTracker:
-    def __init__(self, asset_columns: list):
+    def __init__(self, asset_columns: list, begin_date: pd.Timestamp):
+        self.current_year = begin_date.year
+
         self.prev_net_value = None
         self.compound_factor = 1.0
         self.log = []
         self.delta_log = []
         self.asset_columns = asset_columns  # Exact column order for Excel
+
 
     def update(self, portfolio: Portfolio, date, taxes=0.0, costs=0.0, trade_deltas=None):
         curr_net = portfolio.value - taxes - costs
@@ -148,7 +157,14 @@ class PortfolioTracker:
             daily_ret = 0.0
         else:
             daily_ret = curr_net / self.prev_net_value - 1.0
-        
+
+        if date.year > self.current_year:
+            print(date, self.current_year, end=' -> ')
+            self.current_year = date.year
+            print(date, self.current_year)
+
+            costs+=portfolio.annual_costs
+
         self.compound_factor *= (1.0 + daily_ret)
         
         # Build asset value row (align with expected columns)

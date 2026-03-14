@@ -11,6 +11,7 @@ def load_data():
     return pd.read_csv("./Timeseries.csv", sep=";")
 
 
+
 def preprocess_data(df, begin_date="2020-01-02", end_date="2026-01-20"):
     """Preprocess dataframe to match old code expectations"""
     df = df.copy()
@@ -59,11 +60,11 @@ def backtest(initial_value, begin_date, end_date, weights, brokerage_fee_rate=0.
     initial_prices = prices.iloc[0]
 
     # Initialize tracker and rebalancer 
-    tracker = PortfolioTracker(asset_columns=asset_columns)
+    tracker = PortfolioTracker(asset_columns=asset_columns, begin_date=begin_date)
     rebalancer = Rebalancer(target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 
     # Create and fund the portfolio in one step
-    portfolio, fees = Portfolio.from_weights(prices=initial_prices, value=initial_value, weights=weights, brokerage_fee_rate=brokerage_fee_rate)
+    portfolio, fees = Portfolio.from_weights(prices=initial_prices, value=initial_value, weights=weights, brokerage_fee_rate=brokerage_fee_rate, annual_costs_rate=0.002)
 
     # Log initial state (t=0)
     tracker.update(portfolio, date=dates[0], taxes=0.0, costs=fees, trade_deltas={col: 0.0 for col in asset_columns})
@@ -116,8 +117,8 @@ if __name__ == '__main__':
     }
     
     backtest(initial_value=10000,
-         begin_date = "2020-01-02", 
-         end_date = "2025-09-01", 
+         begin_date = pd.to_datetime("2020-01-02"), 
+         end_date = pd.to_datetime("2025-09-01"), 
          weights=weights, 
          brokerage_fee_rate=0.0029, 
          rebalance_threshold=0.1, 
