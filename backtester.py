@@ -63,10 +63,10 @@ def backtest(initial_value, begin_date, end_date, weights, brokerage_fee_rate=0.
     rebalancer = Rebalancer(target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 
     # Create and fund the portfolio in one step
-    portfolio = Portfolio.from_weights(prices=initial_prices, value=initial_value, weights=weights, brokerage_fee_rate=brokerage_fee_rate)
+    portfolio, fees = Portfolio.from_weights(prices=initial_prices, value=initial_value, weights=weights, brokerage_fee_rate=brokerage_fee_rate)
 
     # Log initial state (t=0)
-    tracker.update(portfolio, date=dates[0], taxes=0.0, costs=0.0, trade_deltas={col: 0.0 for col in asset_columns})
+    tracker.update(portfolio, date=dates[0], taxes=0.0, costs=fees, trade_deltas={col: 0.0 for col in asset_columns})
 
     for i in range(1, len(dates)):
         # 1. Update prices

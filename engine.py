@@ -32,6 +32,7 @@ class Portfolio:
             brokerage_fee_rate=brokerage_fee_rate
         )
         
+        fees = 0.
         # 2. Allocate capital based on weights
         for asset, weight in weights.items():
             # Ensure asset exists in price data and weight is positive
@@ -40,9 +41,10 @@ class Portfolio:
                 if price > 0:
                     units = (value * weight) / price
                     # Execute the buy order internally
-                    portfolio.buy(price, asset, units)
+                    fees += portfolio.buy(price, asset, units)
         
-        return portfolio
+        return portfolio, fees
+    
     @property
     def assets(self): 
         return self.holdings.index
