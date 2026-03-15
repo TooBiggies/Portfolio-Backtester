@@ -307,6 +307,12 @@ class PortfolioTracker:
             - Annual costs (portfolio.annual_costs) are applied automatically when
               the date year increments.
         """
+
+
+        if date.year > self.current_year:
+            self.current_year = date.year
+            costs += portfolio.annual_costs
+
         curr_net = portfolio.value - taxes - costs
 
         if self.prev_net_value is None:
@@ -315,10 +321,6 @@ class PortfolioTracker:
             daily_ret = 0.0
         else:
             daily_ret = curr_net / self.prev_net_value - 1.0
-
-        if date.year > self.current_year:
-            self.current_year = date.year
-            costs += portfolio.annual_costs
 
         self.compound_factor *= (1.0 + daily_ret)
 

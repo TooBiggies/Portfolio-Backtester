@@ -43,7 +43,7 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     return df_prices, begin_date, end_date
 
 
-def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0.0029, rebalance_threshold=0.1, tax_rate=0.26):
+def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0.):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -91,7 +91,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     rebalancer = Rebalancer(target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 
     # Create and fund the portfolio in one step
-    portfolio, fees = Portfolio.from_weights(prices=initial_prices, value=initial_value, weights=weights, brokerage_fee_rate=brokerage_fee_rate, annual_costs_rate=0.002)
+    portfolio, fees = Portfolio.from_weights(prices=initial_prices, value=initial_value, weights=weights, brokerage_fee_rate=brokerage_fee_rate, annual_costs_rate=annual_costs_rate)
 
     # Log initial state (t=0)
     tracker.update(portfolio, date=dates[0], taxes=0.0, costs=fees, trade_deltas={col: 0.0 for col in asset_columns})
@@ -143,9 +143,10 @@ if __name__ == '__main__':
 
     backtest(initial_value=10000,
          weights=weights,
-         begin_date = pd.to_datetime("2020-01-02"),
+         begin_date = pd.to_datetime("2010-01-02"),
          end_date = pd.to_datetime("2025-09-01"),
          brokerage_fee_rate=0.0029,
          rebalance_threshold=0.1,
-         tax_rate=0.26
+         tax_rate=0.26,
+         annual_costs_rate=0.002
          )
