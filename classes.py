@@ -96,8 +96,8 @@ class portfolio_evo: #20260131 vincemauro
         self.delta_notional      = 0.0
         self.AssetValue          = self.TotValue*self.w                                     # Inizializzazione valore degli asset in PTF
         self.PMC                 = self.StockPrice.loc[0,:]                                 # Inizializzazione Prezzo Medio di Carico
-        self.PMC_weight          = pd.Series(data = 1.0, index = self.IndexName)            # Inizializzazione denominatore media pesata per calcolo PMC
         self.notional            = self.AssetValue/self.StockPrice.loc[0,:]                 # Inizializzazione notional degli asset
+        self.PMC_weight          = self.notional.copy()                                      # Denominatore media pesata PMC = unità detenute inizialmente
         self.PercReturn          = 0.0                                                      # Inizializzazione rendimenti percentuali
         self.CompoundReturn      = 1.0                                                      # Inizializzazione rendimenti composti
         self.immediate_payments  = 0.0                                                      # cash adjustments (taxes/fees paid immediately)
@@ -170,19 +170,24 @@ class portfolio_evo: #20260131 vincemauro
         self.CompoundReturn *= 1.0 + self.PercReturn
 
     def update_PMC(self,StockPrice):
-        """Aggiorna il Prezzo Medio di Carico (`PMC`) quando si acquistano unità.
+        """Aggiorna il Prezzo Medio di Carico (`PMC`) in base agli acquisti e alle vendite.
 
-        Per gli asset per cui `delta_notional > 0` (acquisto), il nuovo PMC è la
-        media pesata tra il vecchio PMC e il valore delle nuove unità acquistate
-        (delta_notional * price). `PMC_weight` è il denominatore cumulato usato
-        per calcolare la media pesata.
+        Per gli acquisti (`delta_notional > 0`): il PMC viene aggiornato come media
+        pesata tra il vecchio PMC e il prezzo delle nuove unità acquistate.
+        Per le vendite (`delta_notional < 0`): il PMC non cambia, ma `PMC_weight`
+        (il denominatore = unità detenute) viene ridotto per mantenere la coerenza
+        con i successivi aggiornamenti.
         """
-        mask_buy = self.delta_notional > 0
+        mask_buy  = self.delta_notional > 0
+        mask_sell = self.delta_notional < 0
         self.PMC = self.PMC.copy()
+        # Acquisti: aggiorna PMC come media pesata
         self.PMC[mask_buy] = (self.PMC[mask_buy]*self.PMC_weight[mask_buy]
                               + (self.delta_notional*StockPrice)[mask_buy] )
         self.PMC_weight[mask_buy] += self.delta_notional[mask_buy]
         self.PMC[mask_buy] /= self.PMC_weight[mask_buy]
+        # Vendite: PMC invariato, riduce solo il denominatore (delta < 0)
+        self.PMC_weight[mask_sell] += self.delta_notional[mask_sell]
 
     def update_tax(self, StockPrice, current_date=None):
         """Calcola le imposte sulle plusvalenze realizzate, con riporto minusvalenze.
@@ -210,13 +215,13 @@ class portfolio_evo: #20260131 vincemauro
 
         if current_date is None:
             # percorso senza riporto (compatibilità backward)
-            self.tax = float(realized_gains) * float(self.tax_rate)
+            self.tax = -float(realized_gains) * float(self.tax_rate)
             return
 
         if not self.calcola_minusvalenze:
             # riporto minusvalenze disabilitato: tassa solo le plusvalenze nette dell'operazione
             net = realized_gains - realized_losses
-            self.tax = float(max(0.0, net)) * float(self.tax_rate)
+            self.tax = -float(max(0.0, net)) * float(self.tax_rate)
             return
 
         current_year = pd.Timestamp(current_date).year
@@ -253,7 +258,7 @@ class portfolio_evo: #20260131 vincemauro
             self.loss_carryforward[current_year] = (
                 self.loss_carryforward.get(current_year, 0.0) + new_carry_losses
             )
-        self.tax = float(net_taxable) * float(self.tax_rate)
+        self.tax = -float(net_taxable) * float(self.tax_rate)
 
     def update_transactional_cost(self, StockPrice):
         """Calcola il costo transazionale come percentuale del controvalore scambiato.
