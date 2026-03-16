@@ -32,6 +32,29 @@ def _infer_common_date_range(df: pd.DataFrame, asset_cols: list):
     return common_start, common_end
 
 
+def _infer_dates_if_missing(imported_dataframe: pd.DataFrame, initial_w, start_date, end_date):
+    """Infer missing start/end dates from the common range of selected assets."""
+    if start_date and end_date:
+        return start_date, end_date
+    try:
+        asset_cols = [c for c in imported_dataframe.columns if c != "Date"]
+        if isinstance(initial_w, pd.Series):
+            weights = [initial_w.get(c, 0.0) for c in asset_cols]
+        else:
+            weights = list(initial_w) if initial_w is not None else []
+        selected_assets = [c for c, w in zip(asset_cols, weights) if w and float(w) > 0.0]
+        if not selected_assets:
+            return start_date, end_date
+        common_start, common_end = _infer_common_date_range(imported_dataframe, selected_assets)
+        if not start_date and common_start is not None:
+            start_date = common_start
+        if not end_date and common_end is not None:
+            end_date = common_end
+    except Exception:
+        pass
+    return start_date, end_date
+
+
 def run_backtest(verbose: bool = False, calcola_minusvalenze: bool = False):
     logger = logging.getLogger('backtester')
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
@@ -55,21 +78,7 @@ def run_backtest(verbose: bool = False, calcola_minusvalenze: bool = False):
 
     # If dates are not provided, infer the widest common range across selected assets.
     if not start_date or not end_date:
-        try:
-            asset_cols = [c for c in imported_dataframe.columns if c != "Date"]
-            if isinstance(initial_w, pd.Series):
-                weights = [initial_w.get(c, 0.0) for c in asset_cols]
-            else:
-                weights = list(initial_w) if initial_w is not None else []
-            selected_assets = [c for c, w in zip(asset_cols, weights) if w and float(w) > 0.0]
-            if selected_assets:
-                common_start, common_end = _infer_common_date_range(imported_dataframe, selected_assets)
-                if not start_date and common_start is not None:
-                    start_date = common_start
-                if not end_date and common_end is not None:
-                    end_date = common_end
-        except Exception:
-            pass
+        start_date, end_date = _infer_dates_if_missing(imported_dataframe, initial_w, start_date, end_date)
 
     logger.debug("Imported dataframe shape: %s", imported_dataframe.shape)
     if start_date:
