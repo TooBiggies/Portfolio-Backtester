@@ -10,6 +10,28 @@ from backtester_load_config import load_config
 from backtester_report_creation import create_reports
 
 
+def _infer_common_date_range(df: pd.DataFrame, asset_cols: list):
+    """Return (common_start, common_end) across assets with non-null data."""
+    starts = []
+    ends = []
+    for col in asset_cols:
+        if col not in df.columns:
+            continue
+        series = df[col]
+        valid_dates = df.loc[series.notna(), "Date"]
+        if valid_dates.empty:
+            return None, None
+        starts.append(valid_dates.min())
+        ends.append(valid_dates.max())
+    if not starts or not ends:
+        return None, None
+    common_start = max(starts)
+    common_end = min(ends)
+    if common_start > common_end:
+        return None, None
+    return common_start, common_end
+
+
 def run_backtest(verbose: bool = False, calcola_minusvalenze: bool = False):
     logger = logging.getLogger('backtester')
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
@@ -31,7 +53,29 @@ def run_backtest(verbose: bool = False, calcola_minusvalenze: bool = False):
     # CLI flag takes priority; fall back to config value
     calcola_minusvalenze = calcola_minusvalenze or getattr(cfg, 'CALCOLA_MINUSVALENZE', False)
 
+    # If dates are not provided, infer the widest common range across selected assets.
+    if not start_date or not end_date:
+        try:
+            asset_cols = [c for c in imported_dataframe.columns if c != "Date"]
+            if isinstance(initial_w, pd.Series):
+                weights = [initial_w.get(c, 0.0) for c in asset_cols]
+            else:
+                weights = list(initial_w) if initial_w is not None else []
+            selected_assets = [c for c, w in zip(asset_cols, weights) if w and float(w) > 0.0]
+            if selected_assets:
+                common_start, common_end = _infer_common_date_range(imported_dataframe, selected_assets)
+                if not start_date and common_start is not None:
+                    start_date = common_start
+                if not end_date and common_end is not None:
+                    end_date = common_end
+        except Exception:
+            pass
+
     logger.debug("Imported dataframe shape: %s", imported_dataframe.shape)
+    if start_date:
+        logger.debug("Backtest start date: %s", start_date)
+    if end_date:
+        logger.debug("Backtest end date: %s", end_date)
 
     ptf = portfolio_evo(initial_balance = initial_balance,
                         transac_cost_rate= cfg.TRANSAC_COST_RATE,
