@@ -104,6 +104,16 @@ class portfolio_evo: #20260131 vincemauro
         self.GrossValue = float(self.TotValue)                                              # market value without costs/taxes
         self.BrokerValue = float(self.TotValue)                                             # market value as seen at broker (includes paid fees)
         self.NetValue = float(self.TotValue)                                                # liquidation value (after taxes and liquidation costs)
+        self.initial_transactional_cost = 0.0                                               # costo transazionale dell'acquisto iniziale (day 0)
+
+        # Apply transaction costs for the initial buy on day 0, as an immediate payment.
+        try:
+            if self.transactional_cost_rate and self.transactional_cost_rate != 0:
+                initial_tc = -(abs(self.notional) * self.StockPrice.loc[0, :]).sum() * self.transactional_cost_rate
+                self.initial_transactional_cost = float(initial_tc)
+                self.immediate_payments += self.initial_transactional_cost
+        except Exception:
+            pass
 
     def update_TotValue(self, StockPrice):
         #StockPrice deve essere una Series col nome degli Stock come indici

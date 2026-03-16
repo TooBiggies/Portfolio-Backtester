@@ -37,6 +37,7 @@ def write_markdown_report(report_path: str, ts: str, df_log, df_log_delta,
                 for asset, w in ptf.initial_w.items():
                     f.write(f"  - {asset}: {w*100:.2f}%\n")
                 f.write(f"- Costo transazionale (commissioni+spread): {ptf.transactional_cost_rate*100:.3f}%\n")
+                f.write(f"- Costo transazionale iniziale (day 0): {getattr(ptf, 'initial_transactional_cost', 0.0):.2f}\n")
                 f.write(f"- Expense rate (annuo): {ptf.exp_rate*100:.3f}%\n")
                 f.write(f"- Aliquota fiscale sulle plusvalenze: {ptf.tax_rate*100:.2f}%\n")
                 f.write(f"- Soglia ribilanciamento (per-asset): {ptf.rebalance_threshold*100:.2f}%\n")

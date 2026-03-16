@@ -120,6 +120,11 @@ def write_html_report(html_path: str, ts: str, df_log: pd.DataFrame,
             except Exception:
                 pass
             try:
+                init_tc = getattr(ptf, 'initial_transactional_cost', 0.0)
+                hf.write(f'<tr><td>Initial transactional cost (day 0)</td><td>{init_tc:.2f}</td></tr>')
+            except Exception:
+                pass
+            try:
                 hf.write(f'<tr><td>Tax rate (on gains)</td><td>{ptf.tax_rate*100:.2f}%</td></tr>')
             except Exception:
                 pass
