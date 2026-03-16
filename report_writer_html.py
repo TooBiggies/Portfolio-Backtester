@@ -94,41 +94,68 @@ def write_html_report(html_path: str, ts: str, df_log: pd.DataFrame,
             hf.write('<h2>Detailed Summary (English)</h2>')
             hf.write('<h3>Key Metrics</h3>')
             hf.write('<table>')
-            hf.write('<tr><th>Metric</th><th>Value</th></tr>')
+            hf.write('<tr><th>Metric</th><th>Value</th><th>Meaning</th></tr>')
             try:
                 start_dt = min(ptf.date).date()
                 end_dt = max(ptf.date).date()
                 years = round(((max(ptf.date) - min(ptf.date)).days / 365.25), 2)
-                cagr = (ptf.CompoundReturn ** (1 / years) - 1) * 100 if years > 0 else float('nan')
+                # Recompute net final value including liquidation costs/taxes at the last date.
+                last_prices = ptf.StockPrice.loc[ptf.StockPrice.index[-1], :]
+                gross = ptf.calculate_TotValue(last_prices)
+                liq_tc = (abs(ptf.notional) * last_prices).sum() * ptf.transactional_cost_rate
+                gains = (last_prices - ptf.PMC) * ptf.notional
+                taxable = float(gains[gains > 0].sum())
+                available_offset = sum(ptf.loss_carryforward.values())
+                net_taxable = max(0.0, taxable - available_offset)
+                liq_tax = net_taxable * ptf.tax_rate
+                net_final = float(gross) + float(ptf.immediate_payments) - float(liq_tc) - float(liq_tax)
+                cagr = ((net_final / ptf.StartValue) ** (1 / years) - 1) * 100 if years > 0 else float('nan')
             except Exception:
                 start_dt = end_dt = ''
                 years = ''
                 cagr = ''
-            hf.write(f'<tr><td>Start date</td><td>{start_dt}</td></tr>')
-            hf.write(f'<tr><td>End date</td><td>{end_dt}</td></tr>')
-            hf.write(f'<tr><td>Years</td><td>{years}</td></tr>')
-            hf.write(f'<tr><td>CAGR</td><td>{cagr:.2f}%</td></tr>' if isinstance(cagr, float) else f'<tr><td>CAGR</td><td>{cagr}</td></tr>')
+            hf.write(f'<tr><td>Start date</td><td>{start_dt}</td><td>First date included in the simulation window.</td></tr>')
+            hf.write(f'<tr><td>End date</td><td>{end_dt}</td><td>Last date included in the simulation window.</td></tr>')
+            hf.write(f'<tr><td>Years</td><td>{years}</td><td>Length of the simulation in years (calendar-based).</td></tr>')
+            hf.write(f'<tr><td>CAGR (net)</td><td>{cagr:.2f}%</td><td>Net compound annual growth rate computed from net final value vs StartValue.</td></tr>' if isinstance(cagr, float) else f'<tr><td>CAGR (net)</td><td>{cagr}</td><td>Net compound annual growth rate computed from net final value vs StartValue.</td></tr>')
             try:
-                hf.write(f'<tr><td>Start capital</td><td>{ptf.StartValue}</td></tr>')
-                hf.write(f'<tr><td>Final capital</td><td>{ptf.TotValue:.2f}</td></tr>')
+                hf.write(f'<tr><td>Start capital</td><td>{ptf.StartValue}</td><td>Initial portfolio value at simulation start.</td></tr>')
+                hf.write(f'<tr><td>Final capital (gross)</td><td>{ptf.TotValue:.2f}</td><td>Broker-view market value plus immediate payments.</td></tr>')
+                try:
+                    hf.write(f'<tr><td>Final capital (net)</td><td>{net_final:.2f}</td><td>Net liquidation value after taxes and liquidation costs (sell-all scenario).</td></tr>')
+                except Exception:
+                    hf.write(f'<tr><td>Final capital (net)</td><td>{ptf.NetValue:.2f}</td><td>Net liquidation value after taxes and liquidation costs (sell-all scenario).</td></tr>')
+                hf.write(f'<tr><td>Final cash</td><td>{getattr(ptf, "cash", 0.0):.2f}</td><td>Cash balance after final liquidation.</td></tr>')
             except Exception:
                 pass
-            hf.write(f'<tr><td>Number of rebalances</td><td>{len(rebalance_transactions)}</td></tr>')
-            hf.write(f'<tr><td>Total traded volume (approx)</td><td>${sum(tx.get("total_trade_value",0.0) for tx in rebalance_transactions):.2f}</td></tr>')
+            hf.write(f'<tr><td>Number of rebalances</td><td>{len(rebalance_transactions)}</td><td>How many times weights crossed the rebalance threshold.</td></tr>')
+            hf.write(f'<tr><td>Total traded volume (approx)</td><td>${sum(tx.get("total_trade_value",0.0) for tx in rebalance_transactions):.2f}</td><td>Sum of absolute trade values across all rebalances.</td></tr>')
             try:
-                hf.write(f'<tr><td>Transactional cost rate</td><td>{ptf.transactional_cost_rate*100:.3f}%</td></tr>')
+                hf.write(f'<tr><td>Transactional cost rate</td><td>{ptf.transactional_cost_rate*100:.3f}%</td><td>Percentage cost applied to the value traded.</td></tr>')
             except Exception:
                 pass
             try:
                 init_tc = getattr(ptf, 'initial_transactional_cost', 0.0)
-                hf.write(f'<tr><td>Initial transactional cost (day 0)</td><td>{init_tc:.2f}</td></tr>')
+                hf.write(f'<tr><td>Initial transactional cost (day 0)</td><td>{init_tc:.2f}</td><td>One-off cost for the initial portfolio buy.</td></tr>')
             except Exception:
                 pass
             try:
-                hf.write(f'<tr><td>Tax rate (on gains)</td><td>{ptf.tax_rate*100:.2f}%</td></tr>')
+                hf.write(f'<tr><td>Tax rate (on gains)</td><td>{ptf.tax_rate*100:.2f}%</td><td>Tax rate applied to realized capital gains on sells.</td></tr>')
             except Exception:
                 pass
-            hf.write(f'<tr><td>Price normalization</td><td>{cfg.STOCK_PRICE_NORMALIZATION}</td></tr>')
+            hf.write(f'<tr><td>Price normalization</td><td>{cfg.STOCK_PRICE_NORMALIZATION}</td><td>If true, prices are normalized to 1 at t0.</td></tr>')
+            try:
+                last_prices = ptf.StockPrice.loc[ptf.StockPrice.index[-1], :]
+                liq_tc = (abs(ptf.notional) * last_prices).sum() * ptf.transactional_cost_rate
+                gains = (last_prices - ptf.PMC) * ptf.notional
+                taxable = float(gains[gains > 0].sum())
+                available_offset = sum(ptf.loss_carryforward.values())
+                net_taxable = max(0.0, taxable - available_offset)
+                liq_tax = net_taxable * ptf.tax_rate
+                hf.write(f'<tr><td>Liquidation cost (est.)</td><td>{liq_tc:.2f}</td><td>Estimated transaction cost to sell all positions on the final day.</td></tr>')
+                hf.write(f'<tr><td>Liquidation taxes (est.)</td><td>{liq_tax:.2f}</td><td>Estimated taxes on realized gains when liquidating on the final day.</td></tr>')
+            except Exception:
+                pass
 
             # Compute metrics from df_log inside writer as well
             max_dd = None
@@ -136,7 +163,13 @@ def write_html_report(html_path: str, ts: str, df_log: pd.DataFrame,
             sharpe = None
             sortino = None
             try:
-                if 'TotValue' in df_log.columns:
+                if 'NetValue' in df_log.columns:
+                    tv = pd.Series(df_log['NetValue']).astype(float)
+                    running_max = tv.cummax()
+                    dd = (tv - running_max) / running_max
+                    max_dd = float(dd.min()) if not dd.empty else None
+                    rets = tv.pct_change().dropna()
+                elif 'TotValue' in df_log.columns:
                     tv = pd.Series(df_log['TotValue']).astype(float)
                     running_max = tv.cummax()
                     dd = (tv - running_max) / running_max
@@ -181,10 +214,10 @@ def write_html_report(html_path: str, ts: str, df_log: pd.DataFrame,
             except Exception:
                 max_dd = vol_ann = sharpe = sortino = None
 
-            hf.write(f'<tr><td>Max drawdown</td><td>{abs(max_dd)*100:.2f}%</td></tr>' if max_dd is not None else '<tr><td>Max drawdown</td><td>-</td></tr>')
-            hf.write(f'<tr><td>Volatility (ann.)</td><td>{vol_ann*100:.2f}%</td></tr>' if vol_ann is not None else '<tr><td>Volatility (ann.)</td><td>-</td></tr>')
-            hf.write(f'<tr><td>Sharpe ratio</td><td>{sharpe:.2f}</td></tr>' if sharpe is not None else '<tr><td>Sharpe ratio</td><td>-</td></tr>')
-            hf.write(f'<tr><td>Sortino ratio</td><td>{sortino:.2f}</td></tr>' if sortino is not None else '<tr><td>Sortino ratio</td><td>-</td></tr>')
+            hf.write(f'<tr><td>Max drawdown</td><td>{abs(max_dd)*100:.2f}%</td><td>Largest peak-to-trough decline of NetValue (liquidation-adjusted).</td></tr>' if max_dd is not None else '<tr><td>Max drawdown</td><td>-</td><td>Largest peak-to-trough decline of NetValue (liquidation-adjusted).</td></tr>')
+            hf.write(f'<tr><td>Volatility (ann.)</td><td>{vol_ann*100:.2f}%</td><td>Annualized standard deviation of periodic returns.</td></tr>' if vol_ann is not None else '<tr><td>Volatility (ann.)</td><td>-</td><td>Annualized standard deviation of periodic returns.</td></tr>')
+            hf.write(f'<tr><td>Sharpe ratio</td><td>{sharpe:.2f}</td><td>Annualized return divided by annualized volatility.</td></tr>' if sharpe is not None else '<tr><td>Sharpe ratio</td><td>-</td><td>Annualized return divided by annualized volatility.</td></tr>')
+            hf.write(f'<tr><td>Sortino ratio</td><td>{sortino:.2f}</td><td>Annualized return divided by downside deviation.</td></tr>' if sortino is not None else '<tr><td>Sortino ratio</td><td>-</td><td>Annualized return divided by downside deviation.</td></tr>')
 
             hf.write('</table>')
 

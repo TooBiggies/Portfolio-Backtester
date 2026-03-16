@@ -14,7 +14,17 @@ def write_markdown_report(report_path: str, ts: str, df_log, df_log_delta,
                 start_dt = min(ptf.date).date()
                 end_dt = max(ptf.date).date()
                 years = round(((max(ptf.date) - min(ptf.date)).days / 365.25), 2)
-                cagr = (ptf.CompoundReturn ** (1 / years) - 1) * 100 if years > 0 else float('nan')
+                # Recompute net final value including liquidation costs/taxes at the last date.
+                last_prices = ptf.StockPrice.loc[ptf.StockPrice.index[-1], :]
+                gross = ptf.calculate_TotValue(last_prices)
+                liq_tc = (abs(ptf.notional) * last_prices).sum() * ptf.transactional_cost_rate
+                gains = (last_prices - ptf.PMC) * ptf.notional
+                taxable = float(gains[gains > 0].sum())
+                available_offset = sum(ptf.loss_carryforward.values())
+                net_taxable = max(0.0, taxable - available_offset)
+                liq_tax = net_taxable * ptf.tax_rate
+                net_final = float(gross) + float(ptf.immediate_payments) - float(liq_tc) - float(liq_tax)
+                cagr = ((net_final / ptf.StartValue) ** (1 / years) - 1) * 100 if years > 0 else float('nan')
             except Exception:
                 start_dt = end_dt = ''
                 years = ''
@@ -22,11 +32,26 @@ def write_markdown_report(report_path: str, ts: str, df_log, df_log_delta,
 
             f.write(f"**Orizzonte temporale:** {start_dt} / {end_dt}  \n")
             f.write(f"**Anni in simulazione:** {years}  \n")
-            f.write(f"**CAGR:** {cagr:.2f}%  \n" if isinstance(cagr, float) else f"**CAGR:** {cagr}  \n")
+            f.write(f"**CAGR (netto):** {cagr:.2f}%  \n" if isinstance(cagr, float) else f"**CAGR (netto):** {cagr}  \n")
             try:
-                f.write(f"**Total compound return:** {ptf.CompoundReturn * 100:.2f}%  \n")
+                try:
+                    net_total_return = (net_final / ptf.StartValue - 1) * 100
+                    f.write(f"**Total return (netto):** {net_total_return:.2f}%  \n")
+                except Exception:
+                    f.write(f"**Total compound return:** {ptf.CompoundReturn * 100:.2f}%  \n")
                 f.write(f"**Capitale iniziale:** {ptf.StartValue}  \n")
-                f.write(f"**Capitale finale:** {ptf.TotValue:.2f}  \n\n")
+                f.write(f"**Capitale finale (lordo):** {ptf.TotValue:.2f}  \n")
+                try:
+                    f.write(f"**Capitale finale (netto):** {net_final:.2f}  \n")
+                except Exception:
+                    f.write(f"**Capitale finale (netto):** {ptf.NetValue:.2f}  \n")
+                f.write(f"**Cassa finale:** {getattr(ptf, 'cash', 0.0):.2f}  \n")
+                try:
+                    f.write(f"**Costo di liquidazione stimato:** {liq_tc:.2f}  \n")
+                    f.write(f"**Tasse di liquidazione stimate:** {liq_tax:.2f}  \n")
+                except Exception:
+                    pass
+                f.write("\n")
             except Exception:
                 pass
 
@@ -64,6 +89,60 @@ def write_markdown_report(report_path: str, ts: str, df_log, df_log_delta,
             else:
                 for entry in rebalance_explanations:
                     f.write(entry + "\n")
+
+            # Net performance metrics (prefer NetValue series when available)
+            try:
+                f.write("\n**Metriche nette (liquidation-adjusted):**\n")
+                if 'NetValue' in df_log.columns:
+                    tv = pd.Series(df_log['NetValue']).astype(float)
+                elif 'TotValue' in df_log.columns:
+                    tv = pd.Series(df_log['TotValue']).astype(float)
+                else:
+                    tv = pd.Series(dtype=float)
+
+                max_dd = None
+                vol_ann = None
+                sharpe = None
+                sortino = None
+                if not tv.empty:
+                    running_max = tv.cummax()
+                    dd = (tv - running_max) / running_max
+                    max_dd = float(dd.min()) if not dd.empty else None
+                    rets = tv.pct_change().dropna()
+                    if len(rets) > 0:
+                        try:
+                            idx = pd.to_datetime(df_log.index)
+                            if len(idx) >= 2:
+                                median_delta_days = int((idx[1:] - idx[:-1]).median().days)
+                                periods_per_year = int(365.25 / median_delta_days) if median_delta_days > 0 else 252
+                            else:
+                                periods_per_year = 252
+                        except Exception:
+                            periods_per_year = 252
+
+                        mean_ret = float(rets.mean())
+                        vol = float(rets.std())
+                        vol_ann = vol * (periods_per_year ** 0.5)
+                        try:
+                            ann_ret = (1.0 + rets).prod() ** (periods_per_year / len(rets)) - 1.0
+                        except Exception:
+                            ann_ret = mean_ret * periods_per_year
+
+                        sharpe = float(ann_ret / vol_ann) if vol_ann and vol_ann > 0 else None
+                        neg = rets[rets < 0]
+                        if len(neg) > 0:
+                            downside_std = (neg.pow(2).mean()) ** 0.5
+                            downside_ann = downside_std * (periods_per_year ** 0.5)
+                            sortino = float(ann_ret / downside_ann) if downside_ann and downside_ann > 0 else None
+                        else:
+                            sortino = None
+
+                f.write(f"- Max drawdown (netto): {abs(max_dd)*100:.2f}%\n" if max_dd is not None else "- Max drawdown (netto): -\n")
+                f.write(f"- Volatilità annua (netta): {vol_ann*100:.2f}%\n" if vol_ann is not None else "- Volatilità annua (netta): -\n")
+                f.write(f"- Sharpe (netto): {sharpe:.2f}\n" if sharpe is not None else "- Sharpe (netto): -\n")
+                f.write(f"- Sortino (netto): {sortino:.2f}\n" if sortino is not None else "- Sortino (netto): -\n")
+            except Exception:
+                pass
 
             f.write("\n**Rebalance transactions (summary):**\n\n")
             if len(rebalance_transactions) == 0:

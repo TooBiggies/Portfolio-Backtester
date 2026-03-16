@@ -60,6 +60,7 @@ class portfolio_evo: #20260131 vincemauro
         self.NetTotValue              = self.TotValue           # Valore totale del PTF sottraendo  tasse e costi di transazione
         self.transactional_cost_rate  = transac_cost_rate       # Percentuale costi di transazione come somma %commissioni e %spread
         self.TransactionalCost        = 0.0                     # Inizializzazione costo di transazione progressivo
+        self.cash                     = 0.0                     # Liquidità (proventi da vendite / cassa)
         self.tax_rate                 = tax_rate                # Percentuale tassazione plusvalenza
         self.exp_rate                 = exp_rate                # Tasso spesa annuo in cui inserire la somma di tracking error + 0.2% di imposta di bollo sul dossier titoli
         self.exp_cost                 = 0.0                     # Costo ricorrente pro-rata dell'ultimo periodo
@@ -154,12 +155,16 @@ class portfolio_evo: #20260131 vincemauro
         w = AssetValue / TotValue
         """
         self.AssetValue = self.notional * StockPrice
-        self.w = self.AssetValue/self.calculate_TotValue(StockPrice)
+        tot = self.calculate_TotValue(StockPrice)
+        if tot == 0:
+            self.w = pd.Series(0.0, index=self.IndexName)
+        else:
+            self.w = self.AssetValue / tot
 
     def calculate_TotValue(self,StockPrice):
         #StockPrice deve essere una Series col nome degli Stock come indici
         """Valore totale del portafoglio come dot product tra notional e prezzi."""
-        return self.notional.dot(StockPrice)
+        return self.notional.dot(StockPrice) + float(self.cash)
 
     def calculate_NetTotValue(self, StockPrice):
         #StockPrice deve essere una Series col nome degli Stock come indici

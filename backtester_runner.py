@@ -243,6 +243,8 @@ def run_backtest(verbose: bool = False, calcola_minusvalenze: bool = False):
         df_log.loc[ptf.date[i], "Return"] = ptf.PercReturn
         df_log.loc[ptf.date[i], "Compound Return"] = ptf.CompoundReturn
         df_log.loc[ptf.date[i], "TotValue"] = ptf.TotValue
+        df_log.loc[ptf.date[i], "NetValue"] = ptf.NetValue
+        df_log.loc[ptf.date[i], "Cash"] = ptf.cash
         df_log.loc[ptf.date[i], "Taxes"] = ptf.tax
         df_log.loc[ptf.date[i], "TransacCost"] = ptf.TransactionalCost
         df_log.loc[ptf.date[i], "ExpCost"] = ptf.exp_cost
@@ -251,6 +253,44 @@ def run_backtest(verbose: bool = False, calcola_minusvalenze: bool = False):
         df_log_delta.loc[ptf.date[i], ptf.IndexName] = ptf.delta_notional * StockPrice
 
         logger.debug("PercReturn=%s CompoundReturn=%s TotValue=%s", ptf.PercReturn, ptf.CompoundReturn, ptf.TotValue)
+
+    # Final liquidation: sell all positions on the last available date.
+    try:
+        last_idx = ptf.StockPrice.index[-1]
+        last_date = ptf.date[last_idx]
+        last_prices = ptf.StockPrice.loc[last_idx, :]
+
+        ptf.reset_tax_transaccost()
+        ptf.reset_delta_notional()
+
+        # Sell all notionals at last prices.
+        ptf.delta_notional = -ptf.notional.copy()
+        ptf.update_tax(last_prices, current_date=last_date)
+        ptf.update_transactional_cost(last_prices)
+        ptf.cash += (ptf.notional * last_prices).sum()
+        ptf.notional += ptf.delta_notional
+        ptf.immediate_payments += (ptf.tax + ptf.TransactionalCost)
+
+        # After liquidation, portfolio is in cash (asset notionals = 0).
+        ptf.AssetValue = ptf.notional * last_prices
+        ptf.w = pd.Series(0.0, index=ptf.IndexName)
+        ptf.update_Return(last_prices)
+        ptf.update_TotValue(last_prices)
+        ptf.update_NetTotValue(last_prices)
+
+        df_log.loc[last_date, "Return"] = ptf.PercReturn
+        df_log.loc[last_date, "Compound Return"] = ptf.CompoundReturn
+        df_log.loc[last_date, "TotValue"] = ptf.TotValue
+        df_log.loc[last_date, "NetValue"] = ptf.NetValue
+        df_log.loc[last_date, "Cash"] = ptf.cash
+        df_log.loc[last_date, "Taxes"] = ptf.tax
+        df_log.loc[last_date, "TransacCost"] = ptf.TransactionalCost
+        df_log.loc[last_date, "ExpCost"] = ptf.exp_cost
+        df_log.loc[last_date, "LossCarryforward"] = sum(ptf.loss_carryforward.values())
+        df_log.loc[last_date, ptf.IndexName] = ptf.AssetValue
+        df_log_delta.loc[last_date, ptf.IndexName] = ptf.delta_notional * last_prices
+    except Exception:
+        pass
 
     # Reports
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
