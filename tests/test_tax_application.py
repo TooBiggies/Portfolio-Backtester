@@ -33,8 +33,9 @@ def test_tax_behavior_sale_vs_gain():
     StockPrice = pd.Series({'A': 120.0})
     ptf.update_tax(StockPrice)
 
-    # Expected: tax applied only on realized gains = -(delta * (price - PMC)) * tax_rate
-    expected_gain_based = - (ptf.delta_notional * (StockPrice - ptf.PMC)).sum() * ptf.tax_rate
+    # Expected: tax applied only on realized gains.
+    # Tax is stored as a negative cash outflow: delta < 0, (price - PMC) > 0 => tax < 0.
+    expected_gain_based = (ptf.delta_notional * (StockPrice - ptf.PMC)).sum() * ptf.tax_rate
 
     assert ptf.tax == expected_gain_based
 
@@ -71,7 +72,8 @@ def test_tax_sum_multiple_assets():
     StockPrice = pd.Series({'A': 120.0, 'B': 250.0})
     ptf.update_tax(StockPrice)
 
-    expected = - (ptf.delta_notional * (StockPrice - ptf.PMC)).sum() * ptf.tax_rate
+    # Tax is stored as a negative cash outflow: for sells, delta < 0 so expected < 0.
+    expected = (ptf.delta_notional * (StockPrice - ptf.PMC)).sum() * ptf.tax_rate
     assert ptf.tax == expected
 
 
@@ -109,7 +111,8 @@ def test_update_notional_tax_transaccost_immediate_payments():
 
     # expected tax computed by implementation
     mask_tax = (ptf.delta_notional < 0) & (StockPrice > ptf.PMC)
-    expected_tax = - (ptf.delta_notional * (StockPrice - ptf.PMC))[mask_tax].sum() * ptf.tax_rate if mask_tax.any() else 0.0
+    # Tax is stored as a negative cash outflow: mask selects sells above PMC.
+    expected_tax = (ptf.delta_notional * (StockPrice - ptf.PMC))[mask_tax].sum() * ptf.tax_rate if mask_tax.any() else 0.0
 
     # transactional cost rate = 0 so immediate_payments should equal tax
     assert ptf.tax == expected_tax
@@ -171,7 +174,7 @@ def test_loss_carryforward_partial_offset():
     # Guadagno 50, offset con 30 → tassa sul netto 20
     ptf.delta_notional = pd.Series({'A': -1.0})
     ptf.update_tax(pd.Series({'A': 150.0}), current_date=pd.Timestamp('2022-01-01'))
-    expected_tax = 20.0 * 0.26
+    expected_tax = -20.0 * 0.26
     assert abs(ptf.tax - expected_tax) < 1e-9
     assert len(ptf.loss_carryforward) == 0  # carry-forward esaurito
 
@@ -200,7 +203,7 @@ def test_loss_carryforward_expiry():
     # Guadagno anno 2024 (5 anni dopo) → credito 2019 scaduto, tassa piena
     ptf.delta_notional = pd.Series({'A': -1.0})
     ptf.update_tax(pd.Series({'A': 140.0}), current_date=pd.Timestamp('2024-06-01'))
-    expected_tax = 40.0 * 0.26
+    expected_tax = -40.0 * 0.26
     assert abs(ptf.tax - expected_tax) < 1e-9
 
 
