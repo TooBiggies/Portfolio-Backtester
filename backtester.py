@@ -43,7 +43,7 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     return df_prices, begin_date, end_date
 
 
-def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0.):
+def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -122,7 +122,10 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     plt.ylabel('Compound Return %')
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig('plot.png')
+    if not plot:
+        plt.savefig('plot.png')
+    else:
+        plt.plot()
 
 
 if __name__ == '__main__':
