@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 
+from contextlib import contextmanager
+
 class Portfolio:
     def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., annual_costs_rate: float=0.):
         """
@@ -105,6 +107,21 @@ class Portfolio:
         """
         return self.assets_costs[asset] / self.holdings[asset] if self.holdings[asset] > 0 else 0.0
 
+    @contextmanager
+    def simulate_transactions(self):
+        """
+        Context manager that temporarily allows mutations to the portfolio,
+        restoring the original state on exit.
+        """
+        saved_holdings = self.holdings.copy()
+        saved_costs = self.assets_costs.copy()
+        try:
+            yield self
+        finally:
+            self.holdings = saved_holdings
+            self.assets_costs = saved_costs
+
+
     def buy(self, price: float, asset: str, units: float):
         """
         Executes a purchase order for a specific asset.
@@ -175,6 +192,18 @@ class Portfolio:
         price = self.prices[asset]
         return self.sell(price, asset, -units, tax_rate) if units < 0 else self.buy(price, asset, units)
 
+    def cash_out(self, tax_rate: float=0.26):
+        "sell everything"
+
+        broker_value = self.value
+        total_taxes, total_costs = (0., 0.)
+        for asset in self.holdings.index:
+            taxes, costs = self.sell(self.prices[asset], asset, self.holdings[asset], tax_rate)
+            total_costs += costs
+            total_taxes += taxes
+
+        return broker_value - total_costs - total_taxes
+
 class Rebalancer:
     """
     Calculates trade requirements to align a portfolio with target asset weights.
@@ -222,34 +251,47 @@ class Rebalancer:
                     Positive values indicate buys, negative values indicate sells.
                     Returns zeros for all assets if the threshold is not breached.
         """
+
         delta = self.target_weights - portfolio.weights
+
         if not np.any(np.abs(delta) > self.threshold):
             return 0.0, 0.0, {asset: 0.0 for asset in portfolio.assets}
 
-        snapshot_value = portfolio.value
-        trades = {
-            asset: delta[asset] * snapshot_value / portfolio.prices[asset]
-            for asset in portfolio.assets
-        }
+        V = portfolio.value
+        V_prime = V
+        converged = False
 
-        # Calculate monetary value of each trade
-        trade_deltas = {
-            asset: units * portfolio.prices[asset]
-            for asset, units in trades.items()
-        }
+        while not converged:
+            with portfolio.simulate_transactions() as temp:
+                trades = {
+                    asset: (self.target_weights[asset] * V_prime / temp.prices[asset]) - temp.holdings[asset]
+                    for asset in temp.assets
+                }
 
-        total_tax, total_cost = 0.0, 0.0
+                total_tax, total_cost = 0.0, 0.0
+                for asset, units in trades.items():
+                    if units < 0:
+                        fee, tax = temp.sell(temp.prices[asset], asset, -units, self.tax_rate)
+                        total_tax += tax
+                        total_cost += fee
+                    elif units > 0:
+                        fee = temp.buy(temp.prices[asset], asset, units)
+                        total_cost += fee
+
+            new_V_prime = V - total_tax - total_cost
+            converged = abs(new_V_prime / V_prime - 1) < 1e-8
+            V_prime = new_V_prime
+
+        # Apply trades to the real portfolio
+        trade_deltas = {}
         for asset, units in trades.items():
+            trade_deltas[asset] = units * portfolio.prices[asset]
             if units < 0:
-                fee, tax = portfolio.sell(portfolio.prices[asset], asset, -units, self.tax_rate)
-                total_tax += tax
-                total_cost += fee
+                portfolio.sell(portfolio.prices[asset], asset, -units, self.tax_rate)
             elif units > 0:
-                fee = portfolio.buy(portfolio.prices[asset], asset, units)
-                total_cost += fee
+                portfolio.buy(portfolio.prices[asset], asset, units)
 
         return total_tax, total_cost, trade_deltas
-
 
 class PortfolioTracker:
     """
@@ -327,12 +369,16 @@ class PortfolioTracker:
         # Build asset value row (align with expected columns)
         asset_values = portfolio.assets_values.reindex(self.asset_columns, fill_value=0.0)
 
+        with portfolio.simulate_transactions() as temp: 
+            cash_out = temp.cash_out()
+
         # Log entry for df_log
         self.log.append({
             'Date': date,
             'Return': daily_ret,
             'Compound Return': self.compound_factor,
             'TotValue': portfolio.value,
+            'CashOut': cash_out,
             'Taxes': -taxes,  # Negate to match original Excel sign convention
             'TransacCost': -costs,
             **{col: asset_values[col] for col in self.asset_columns}
@@ -364,9 +410,7 @@ class PortfolioTracker:
         df_log = pd.DataFrame(self.log).set_index('Date')
         df_log_delta = pd.DataFrame(self.delta_log).set_index('Date')
 
-        # Ensure column order matches Excel
-        log_columns = ['Return', 'Compound Return', 'TotValue', 'Taxes', 'TransacCost'] + self.asset_columns
-        df_log = df_log[log_columns]
+        df_log = df_log
 
         df_log_delta = df_log_delta[self.asset_columns]
 
