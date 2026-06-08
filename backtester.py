@@ -1,7 +1,8 @@
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 
-from engine import Portfolio, Rebalancer, PortfolioTracker
+from engine import Portfolio, PortfolioTracker, Rebalancer
+
 
 def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=None, date_column='Date'):
     """
@@ -29,8 +30,8 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
 
     df = df.copy()
     df[date_column] = pd.to_datetime(df[date_column], dayfirst=True, errors="coerce")
-    df = df[(df[date_column]>=pd.to_datetime(begin_date))].copy()
-    df = df[(df[date_column]<=pd.to_datetime(end_date))].copy()
+    df = df[(df[date_column] >= pd.to_datetime(begin_date))].copy()
+    df = df[(df[date_column] <= pd.to_datetime(end_date))].copy()
     df = df.reset_index(drop=True)
 
     if asset_columns is None:
@@ -94,42 +95,58 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     portfolio, fees = Portfolio.from_weights(prices=initial_prices, value=initial_value, weights=weights, brokerage_fee_rate=brokerage_fee_rate, annual_costs_rate=annual_costs_rate)
 
     # Log initial state (t=0)
-    tracker.update(portfolio, date=dates[0], taxes=0.0, costs=fees, trade_deltas={col: 0.0 for col in asset_columns})
+    tracker.update(portfolio, date=dates[0], taxes=pd.Series(0, index = portfolio.prices.index), costs=fees, trade_deltas={col: 0.0 for col in asset_columns})
 
     for i in range(1, len(dates)):
         # 1. Update prices
         portfolio.prices = prices.iloc[i]
 
         # 2. Check and execute rebalance
-        tax, cost, trade_deltas = rebalancer.rebalance(portfolio)
+        taxes, costs, trade_deltas = rebalancer.rebalance(portfolio)
 
         # 3. Log state
-        tracker.update(portfolio, date=dates[i], taxes=tax, costs=cost, trade_deltas=trade_deltas)
+        tracker.update(portfolio, date=dates[i], taxes=taxes, costs=costs, trade_deltas=trade_deltas)
 
     df_log, df_log_delta = tracker.to_dataframes()
 
     df_log.to_excel("output_ptf.xlsx")
     df_log_delta.to_excel("output_ptf_delta.xlsx")
 
+    df_log.to_csv("output_ptf.csv")
+    df_log_delta.to_csv("output_ptf_delta.csv")
+
     print(f"Orizzonte temporale   {begin_date} / {end_date}")
-    print(f"Anni in simulazione   {round( ((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2)}")
-    print(f"CAGR                  {(tracker.compound_factor**(1/(round( ((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2))) -1) * 100:.2f}%")
-    print(f"Total compound return {tracker.compound_factor * 100:.2f}%")
-    print(f"Capitale iniziale {initial_value}") #20260131 vincemauro
-    print(f"Capitale finale {portfolio.value:.2f}") #20260131 vincemauro
-    plt.semilogy(df_log.index,df_log['Compound Return'])
-    plt.xlabel('Data')
-    plt.ylabel('Compound Return %')
+    print(
+        f"Anni in simulazione   {round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2)}"
+    )
+    print(f"CAGR  (gross)    {(tracker.compound_factor['gross_assets_value'] ** (1 / (round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2))) - 1) * 100:.2f}%")
+    print(f"CAGR  (broker)   {(tracker.compound_factor['broker_assets_value'] ** (1 / (round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2))) - 1) * 100:.2f}%")
+    print(f"CAGR  (net)      {(tracker.compound_factor['net_assets_value'] ** (1 / (round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2))) - 1) * 100:.2f}%")
+
+    print(f"Total compound return (gross)  {tracker.compound_factor['gross_assets_value'] * 100:.2f}%")
+    print(f"Total compound return (broker) {tracker.compound_factor['broker_assets_value'] * 100:.2f}%")
+    print(f"Total compound return (net)    {tracker.compound_factor['net_assets_value'] * 100:.2f}%")
+
+    print(f"Capitale iniziale {initial_value}")  # 20260131 vincemauro
+    print(f"Valore finale gross {portfolio.gross_assets_value:.2f}")  # 20260131 vincemauro
+    print(f"Capitale finale {portfolio.broker_assets_value:.2f}")  # 20260131 vincemauro
+    print(f"Capitale finale liquido {portfolio.net_assets_value:.2f}")  # 20260131 vincemauro
+
+    plt.semilogy(df_log.index, tracker.compound_return['gross_assets_value'], label='gross')
+    plt.semilogy(df_log.index, tracker.compound_return['broker_assets_value'], label='broker')
+    plt.semilogy(df_log.index, tracker.compound_return['net_assets_value'], label='net')
+    plt.xlabel("Data")
+    plt.ylabel("Compound Return %")
+    plt.legend()
     plt.grid(True)
     plt.tight_layout()
     if not plot:
-        plt.savefig('plot.png')
+        plt.savefig("plot.png")
     else:
         plt.plot()
 
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     weights = {
         'VTSIM': 0.60,
         'SPYSIM': 0.00,
@@ -144,12 +161,12 @@ if __name__ == '__main__':
         'DBMFSIM': 0.05,
     }
 
-    backtest(initial_value=10000,
-         weights=weights,
-         begin_date = pd.to_datetime("2010-01-02"),
-         end_date = pd.to_datetime("2025-09-01"),
-         brokerage_fee_rate=0.0029,
-         rebalance_threshold=0.1,
-         tax_rate=0.26,
-         annual_costs_rate=0.002
-         )
+    backtest(
+        initial_value=10000,
+        weights=weights,
+        begin_date=pd.to_datetime("2010-01-02"),
+        end_date=pd.to_datetime("2025-09-01"),
+        brokerage_fee_rate=0.0029,
+        rebalance_threshold=0.1,
+        tax_rate=0.26,
+    )

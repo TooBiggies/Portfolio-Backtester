@@ -4,7 +4,7 @@ import numpy as np
 from contextlib import contextmanager
 
 class Portfolio:
-    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., annual_costs_rate: float=0.):
+    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None):
         """
         Initializes a Portfolio instance with price data and financial settings.
 
@@ -25,8 +25,14 @@ class Portfolio:
         self.assets_costs = pd.Series(0.0, index=prices.index)  # For PMC
 
         self.brokerage_fee_rate = brokerage_fee_rate
-        self.annual_costs_rate = annual_costs_rate
         self.initial_value = initial_value
+
+        if ter is None:
+            self.ter = pd.Series(0.0, index=prices.index, dtype='float64')
+        else:
+            self.ter = ter.reindex(prices.index, fill_value=0.0)
+
+        self.bollo = pd.Series(0.2/252, index=prices.index) # assumo di pagare ogni giorno lo 0.2/252 del controvalore giornaliero
 
     @classmethod
     def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate):
@@ -48,10 +54,9 @@ class Portfolio:
             prices=prices,
             initial_value=value,
             brokerage_fee_rate=brokerage_fee_rate,
-            annual_costs_rate=0.002
         )
 
-        fees = 0.
+        fees = {}
         # 2. Allocate capital based on weights
         for asset, weight in weights.items():
             # Ensure asset exists in price data and weight is positive
@@ -60,45 +65,53 @@ class Portfolio:
                 if price > 0:
                     units = (value * weight) / price
                     # Execute the buy order internally
-                    fees += portfolio.buy(price, asset, units)
+                    fees[asset] = -portfolio.buy(price, asset, units)
 
         return portfolio, fees
 
     @property
     def assets(self):
-        """
-        Returns as pd.Index the list of unique asset symbols currently held in the portfolio.
-        """
         return self.holdings.index
 
     @property
-    def annual_costs(self):
-        """
-        Returns the calculated annual costs based on the current portfolio value and rate.
-        """
-
-        return self.value*self.annual_costs_rate
+    def pmc(self):
+        return pd.Series([self._pmc(asset) for asset in self.prices.index], index=self.prices.index )
 
     @property
-    def assets_values(self):
-        """
-        Returns a pd.Series of market values of each holding (holdings * current price).
-        """
+    def daily_annual_costs(self):
+        return self.gross_assets_values * (self.ter + self.bollo)
+
+    @property
+    def gross_assets_values(self):
         return self.holdings * self.prices
 
     @property
-    def value(self):
-        """
-        Returns the total gross value of the portfolio (sum of asset market values).
-        """
-        return self.assets_values.sum()  # Gross = TotValue
+    def broker_assets_values(self):
+        return self.gross_assets_values - self.daily_annual_costs
+
+    @property
+    def net_assets_values(self):
+         return self.broker_assets_values - self.cash_out_costs()
+
+    @property
+    def gross_assets_value(self):
+        return self.gross_assets_values.sum()
+
+    @property
+    def broker_assets_value(self):
+        return self.broker_assets_values.sum()
+
+    @property
+    def net_assets_value(self):
+        return self.net_assets_values.sum()
+
 
     @property
     def weights(self):
         """
         Returns a pd.Series: The allocation weight of each asset (value / total value) or a Series of 0.0 if value is 0 or negative.
         """
-        return self.assets_values / self.value if self.value > 0 else pd.Series(0.0, index=self.holdings.index)
+        return self.gross_assets_values / self.gross_assets_value if self.gross_assets_value > 0 else pd.Series(0.0, index=self.holdings.index)
 
     def _pmc(self, asset):
         """
@@ -192,17 +205,15 @@ class Portfolio:
         price = self.prices[asset]
         return self.sell(price, asset, -units, tax_rate) if units < 0 else self.buy(price, asset, units)
 
-    def cash_out(self, tax_rate: float=0.26):
+    def cash_out_costs(self, tax_rate: float=0.26):
         "sell everything"
 
-        broker_value = self.value
-        total_taxes, total_costs = (0., 0.)
-        for asset in self.holdings.index:
-            taxes, costs = self.sell(self.prices[asset], asset, self.holdings[asset], tax_rate)
-            total_costs += costs
-            total_taxes += taxes
+        taxes, costs = {}, {}
+        with self.simulate_transactions() as temp:
+            for asset in temp.holdings.index:
+                taxes[asset], costs[asset] = temp.sell(temp.prices[asset], asset, temp.holdings[asset], tax_rate)
 
-        return broker_value - total_costs - total_taxes
+            return taxes[asset] + costs[asset]
 
 class Rebalancer:
     """
@@ -231,7 +242,7 @@ class Rebalancer:
         self.threshold = threshold
         self.tax_rate = tax_rate
 
-    def rebalance(self, portfolio) -> tuple[float, float, dict]:
+    def rebalance(self, portfolio) -> tuple[dict, dict, dict]:
         """
         Calculates trades required to rebalance the portfolio and estimates costs.
 
@@ -255,9 +266,9 @@ class Rebalancer:
         delta = self.target_weights - portfolio.weights
 
         if not np.any(np.abs(delta) > self.threshold):
-            return 0.0, 0.0, {asset: 0.0 for asset in portfolio.assets}
+            return {asset: 0.0 for asset in portfolio.assets}, {asset: 0.0 for asset in portfolio.assets}, {asset: 0.0 for asset in portfolio.assets}
 
-        V = portfolio.value
+        V = portfolio.gross_assets_value
         V_prime = V
         converged = False
 
@@ -284,14 +295,19 @@ class Rebalancer:
 
         # Apply trades to the real portfolio
         trade_deltas = {}
+        taxes = {k: 0. for k in portfolio.prices.index}
+        costs = {k: 0. for k in portfolio.prices.index}
         for asset, units in trades.items():
             trade_deltas[asset] = units * portfolio.prices[asset]
             if units < 0:
-                portfolio.sell(portfolio.prices[asset], asset, -units, self.tax_rate)
+                c, t = portfolio.sell(portfolio.prices[asset], asset, -units, self.tax_rate)
+                costs[asset] = -c
+                taxes[asset] = -t
             elif units > 0:
-                portfolio.buy(portfolio.prices[asset], asset, units)
+                costs[asset] = -portfolio.buy(portfolio.prices[asset], asset, units)
+                taxes[asset] = 0.
 
-        return total_tax, total_cost, trade_deltas
+        return costs, taxes, trade_deltas
 
 class PortfolioTracker:
     """
@@ -303,7 +319,8 @@ class PortfolioTracker:
 
     Attributes:
         current_year (int): Tracks the current simulation year for annual cost application.
-        prev_net_value (float): The net portfolio value from the previous update step.
+        prev_net_value (dict): The various portfolio values from the previous update step.
+        compound_return (dict): The various portfolio compounds.
         compound_factor (float): Cumulative return factor since inception.
         log (list): List of dictionaries containing daily performance metrics.
         delta_log (list): List of dictionaries containing daily trade cash flows.
@@ -320,14 +337,28 @@ class PortfolioTracker:
         """
         self.current_year = begin_date.year
 
-        self.prev_net_value = None
-        self.compound_factor = 1.0
+        self.prev_net_value = {"gross_assets_value": None, "broker_assets_value": None, "net_assets_value": None}
+        self.compound_factor = {"gross_assets_value": 1., "broker_assets_value": 1., "net_assets_value": 1.}
+        self.compound_return = {"gross_assets_value": [], "broker_assets_value": [], "net_assets_value": []}
         self.log = []
         self.delta_log = []
         self.asset_columns = asset_columns  # Exact column order for Excel
 
+    def _update_compounds(self, portfolio, value):
 
-    def update(self, portfolio: 'Portfolio', date: pd.Timestamp, taxes: float = 0.0, costs: float = 0.0, trade_deltas: dict = None):
+        curr_net = getattr(portfolio, value)
+        prev_net_value = self.prev_net_value[value]
+
+        if prev_net_value is None or prev_net_value == 0:
+            daily_ret = 0.0
+        else:
+            daily_ret = curr_net / prev_net_value - 1.0
+
+        self.prev_net_value[value] = curr_net
+        self.compound_factor[value] *= (1.0 + daily_ret)
+        self.compound_return[value].append(self.compound_factor[value])
+
+    def update(self, portfolio: 'Portfolio', date: pd.Timestamp, taxes: dict = {}, costs: dict = {}, trade_deltas: dict = {}):
         """
         Records the portfolio state for a specific date.
 
@@ -338,8 +369,8 @@ class PortfolioTracker:
         Args:
             portfolio (Portfolio): The current portfolio object containing values and prices.
             date (pd.Timestamp): The date of this recording.
-            taxes (float, optional): Taxes incurred during this period. Defaults to 0.0.
-            costs (float, optional): Transaction costs incurred during this period. Defaults to 0.0.
+            taxes (dict, optional): Taxes incurred during this period. Defaults to 0.0.
+            costs (dict, optional): Transaction costs incurred during this period. Defaults to 0.0.
             trade_deltas (dict, optional): Monetary value of trades per asset.
                 Defaults to None (treated as zeros).
 
@@ -350,38 +381,37 @@ class PortfolioTracker:
               the date year increments.
         """
 
-
-        if date.year > self.current_year:
-            self.current_year = date.year
-            costs += portfolio.annual_costs
-
-        curr_net = portfolio.value - taxes - costs
-
-        if self.prev_net_value is None:
-            daily_ret = 0.0
-        elif self.prev_net_value == 0:
-            daily_ret = 0.0
-        else:
-            daily_ret = curr_net / self.prev_net_value - 1.0
-
-        self.compound_factor *= (1.0 + daily_ret)
+        for metric in self.prev_net_value.keys():
+            self._update_compounds(portfolio, metric)
 
         # Build asset value row (align with expected columns)
-        asset_values = portfolio.assets_values.reindex(self.asset_columns, fill_value=0.0)
-
-        with portfolio.simulate_transactions() as temp: 
-            cash_out = temp.cash_out()
+        get_per_asset = lambda x: getattr(portfolio, x).reindex(self.asset_columns, fill_value=0.0)
 
         # Log entry for df_log
+        prices_dict = {f"Price_{k}": v for k, v in get_per_asset('prices').to_dict().items()}
+        pmc_dict = {f"PMC_{k}": v for k, v in get_per_asset('pmc').to_dict().items()}
+        gross_dict = {f"Gross_{k}": v for k, v in get_per_asset('gross_assets_values').to_dict().items()}
+        broker_dict = {f"Broker_{k}": v for k, v in get_per_asset('broker_assets_values').to_dict().items()}
+        net_dict = {f"Net_{k}": v for k, v in get_per_asset('net_assets_values').to_dict().items()}
+        costs_holding_dict = {f"HoldingCost_{k}": v for k, v in get_per_asset('daily_annual_costs').to_dict().items()}
+
+
+        taxes_dict = {f"Tax_{k}": v for k, v in taxes.items()}
+        costs_trade_dict = {f"TradeCost_{k}": v for k, v in costs.items()}
+
         self.log.append({
             'Date': date,
-            'Return': daily_ret,
-            'Compound Return': self.compound_factor,
-            'TotValue': portfolio.value,
-            'CashOut': cash_out,
-            'Taxes': -taxes,  # Negate to match original Excel sign convention
-            'TransacCost': -costs,
-            **{col: asset_values[col] for col in self.asset_columns}
+            'GrossPortfolioValue': portfolio.gross_assets_value,
+            'BrokerPortfolioValue': portfolio.broker_assets_value,
+            'Net': portfolio.net_assets_value,
+            **prices_dict,
+            **pmc_dict,
+            **gross_dict,
+            **broker_dict,
+            **net_dict,
+            **costs_holding_dict,
+            **taxes_dict,
+            **costs_trade_dict
         })
 
         # Log entry for df_log_delta
@@ -392,8 +422,6 @@ class PortfolioTracker:
         delta_row = {col: trade_deltas.get(col, 0.0) for col in self.asset_columns}
         delta_row['Date'] = date
         self.delta_log.append(delta_row)
-
-        self.prev_net_value = curr_net
 
     def to_dataframes(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
