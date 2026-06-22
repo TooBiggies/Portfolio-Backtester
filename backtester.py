@@ -115,22 +115,25 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     df_log.to_csv("output_ptf.csv")
     df_log_delta.to_csv("output_ptf_delta.csv")
 
+    years = round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2)
+
     print(f"Orizzonte temporale   {begin_date} / {end_date}")
     print(
-        f"Anni in simulazione   {round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2)}"
+        f"Anni in simulazione   {years}"
     )
-    print(f"CAGR  (gross)    {(tracker.compound_factor['gross_assets_value'] ** (1 / (round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2))) - 1) * 100:.2f}%")
-    print(f"CAGR  (broker)   {(tracker.compound_factor['broker_assets_value'] ** (1 / (round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2))) - 1) * 100:.2f}%")
-    print(f"CAGR  (net)      {(tracker.compound_factor['net_assets_value'] ** (1 / (round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2))) - 1) * 100:.2f}%")
+    print(f"CAGR  (gross)    {(tracker.compound_factor['gross_assets_value']**(1/years) - 1) * 100:.2f}%")
+    print(f"CAGR  (broker)   {(tracker.compound_factor['broker_assets_value']**(1/years) - 1) * 100:.2f}%")
+    print(f"CAGR  (net)      {(tracker.compound_factor['net_assets_value']**(1/years) - 1) * 100:.2f}%")
 
+    print(tracker.compound_factor['net_assets_value'])
     print(f"Total compound return (gross)  {tracker.compound_factor['gross_assets_value'] * 100:.2f}%")
     print(f"Total compound return (broker) {tracker.compound_factor['broker_assets_value'] * 100:.2f}%")
     print(f"Total compound return (net)    {tracker.compound_factor['net_assets_value'] * 100:.2f}%")
 
-    print(f"Capitale iniziale {initial_value}")  # 20260131 vincemauro
-    print(f"Valore finale gross {portfolio.gross_assets_value:.2f}")  # 20260131 vincemauro
-    print(f"Capitale finale {portfolio.broker_assets_value:.2f}")  # 20260131 vincemauro
-    print(f"Capitale finale liquido {portfolio.net_assets_value:.2f}")  # 20260131 vincemauro
+    print(f"Capitale iniziale {initial_value}")
+    print(f"Valore finale gross {portfolio.gross_assets_value:.2f}")
+    print(f"Capitale finale {portfolio.broker_assets_value:.2f}")
+    print(f"Capitale finale liquido {portfolio.net_assets_value:.2f}")
 
     plt.semilogy(df_log.index, tracker.compound_return['gross_assets_value'], label='gross')
     plt.semilogy(df_log.index, tracker.compound_return['broker_assets_value'], label='broker')

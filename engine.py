@@ -50,10 +50,12 @@ class Portfolio:
             Portfolio: An initialized Portfolio instance with holdings.
         """
         # 1. Instantiate the empty portfolio
+        ter = pd.Series(annual_costs_rate / 252, index=prices.index)
         portfolio = cls(
             prices=prices,
             initial_value=value,
             brokerage_fee_rate=brokerage_fee_rate,
+            ter=ter,
         )
 
         fees = {}
@@ -187,7 +189,7 @@ class Portfolio:
         self.holdings[asset] -= units
         self.assets_costs[asset] -= units * pmc
 
-        return fee, tax
+        return (fee, tax)
 
     def trade(self, asset: str, units: float, tax_rate: float=0.26):
         """
@@ -206,14 +208,15 @@ class Portfolio:
         return self.sell(price, asset, -units, tax_rate) if units < 0 else self.buy(price, asset, units)
 
     def cash_out_costs(self, tax_rate: float=0.26):
-        "sell everything"
+        "sell everything — returns a Series of exit costs per asset"
 
-        taxes, costs = {}, {}
+        costs_per_asset = pd.Series(0., index=self.holdings.index)
         with self.simulate_transactions() as temp:
             for asset in temp.holdings.index:
-                taxes[asset], costs[asset] = temp.sell(temp.prices[asset], asset, temp.holdings[asset], tax_rate)
+                fee, tax = temp.sell(temp.prices[asset], asset, temp.holdings[asset], tax_rate)
+                costs_per_asset[asset] = fee + tax
 
-            return taxes[asset] + costs[asset]
+            return costs_per_asset
 
 class Rebalancer:
     """
@@ -319,7 +322,7 @@ class PortfolioTracker:
 
     Attributes:
         current_year (int): Tracks the current simulation year for annual cost application.
-        prev_net_value (dict): The various portfolio values from the previous update step.
+        prev_value (dict): The various portfolio values from the previous update step.
         compound_return (dict): The various portfolio compounds.
         compound_factor (float): Cumulative return factor since inception.
         log (list): List of dictionaries containing daily performance metrics.
@@ -337,7 +340,7 @@ class PortfolioTracker:
         """
         self.current_year = begin_date.year
 
-        self.prev_net_value = {"gross_assets_value": None, "broker_assets_value": None, "net_assets_value": None}
+        self.prev_value = {"gross_assets_value": None, "broker_assets_value": None, "net_assets_value": None}
         self.compound_factor = {"gross_assets_value": 1., "broker_assets_value": 1., "net_assets_value": 1.}
         self.compound_return = {"gross_assets_value": [], "broker_assets_value": [], "net_assets_value": []}
         self.log = []
@@ -346,15 +349,17 @@ class PortfolioTracker:
 
     def _update_compounds(self, portfolio, value):
 
-        curr_net = getattr(portfolio, value)
-        prev_net_value = self.prev_net_value[value]
+        curr_value = getattr(portfolio, value)
+        prev_value = self.prev_value[value]
 
-        if prev_net_value is None or prev_net_value == 0:
-            daily_ret = 0.0
+        if prev_value is None:
+            self.prev_value[value] = portfolio.initial_value  # or handle differently if this can happen meaningfully
+            self.compound_return[value].append(1.0)
+            return
         else:
-            daily_ret = curr_net / prev_net_value - 1.0
+            daily_ret = curr_value / prev_value - 1.0 if prev_value != 0 else 0.0
 
-        self.prev_net_value[value] = curr_net
+        self.prev_value[value] = curr_value
         self.compound_factor[value] *= (1.0 + daily_ret)
         self.compound_return[value].append(self.compound_factor[value])
 
@@ -381,7 +386,7 @@ class PortfolioTracker:
               the date year increments.
         """
 
-        for metric in self.prev_net_value.keys():
+        for metric in self.prev_value.keys():
             self._update_compounds(portfolio, metric)
 
         # Build asset value row (align with expected columns)
