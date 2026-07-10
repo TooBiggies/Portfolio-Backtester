@@ -88,7 +88,7 @@ def run_portfolio_evolution(df_prices: pd.DataFrame,
         portfolio.prices = current_prices
         
         # 2. Check and execute rebalance
-        tax, cost, trade_deltas = rebalancer.rebalance(portfolio)
+        cost, tax, trade_deltas = rebalancer.rebalance(portfolio)
         
         # 3. Accumulate cumulative costs (match original ptf.tax behavior)
         cumulative_tax += tax

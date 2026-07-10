@@ -87,25 +87,45 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     dates = prices.index
     initial_prices = prices.iloc[0]
 
-    # Initialize tracker and rebalancer
+    # Initialize tracker
     tracker = PortfolioTracker(asset_columns=asset_columns, begin_date=begin_date)
-    rebalancer = Rebalancer(target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 
-    # Create and fund the portfolio in one step
-    portfolio, fees = Portfolio.from_weights(prices=initial_prices, value=initial_value, weights=weights, brokerage_fee_rate=brokerage_fee_rate, annual_costs_rate=annual_costs_rate)
+    # Ideal portfolio (zero costs) — its "broker" will be labeled as "gross" in output
+    ideal_pf, _ = Portfolio.from_weights(
+        prices=initial_prices, value=initial_value,
+        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0.)
+    ideal_rebalancer = Rebalancer(
+        target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=0.)
+
+    # Real portfolio
+    real_pf, fees = Portfolio.from_weights(
+        prices=initial_prices, value=initial_value,
+        weights=weights, brokerage_fee_rate=brokerage_fee_rate,
+        annual_costs_rate=annual_costs_rate)
+    real_rebalancer = Rebalancer(
+        target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 
     # Log initial state (t=0)
-    tracker.update(portfolio, date=dates[0], taxes=pd.Series(0, index = portfolio.prices.index), costs=fees, trade_deltas={col: 0.0 for col in asset_columns})
+    tracker.update(real_pf, dates[0], gross_portfolio=ideal_pf,
+        taxes=pd.Series(0., index=real_pf.prices.index), costs=fees,
+        trade_deltas={col: 0. for col in asset_columns})
 
     for i in range(1, len(dates)):
         # 1. Update prices
-        portfolio.prices = prices.iloc[i]
+        real_pf.prices = prices.iloc[i]
+        ideal_pf.prices = prices.iloc[i]
 
-        # 2. Check and execute rebalance
-        taxes, costs, trade_deltas = rebalancer.rebalance(portfolio)
+        # 2. Apply daily holding costs (compounds; no-op for ideal with zero costs)
+        real_pf.apply_holding_costs()
+        ideal_pf.apply_holding_costs()
 
-        # 3. Log state
-        tracker.update(portfolio, date=dates[i], taxes=taxes, costs=costs, trade_deltas=trade_deltas)
+        # 3. Check and execute rebalance
+        costs, taxes, trade_deltas = real_rebalancer.rebalance(real_pf)
+        ideal_rebalancer.rebalance(ideal_pf)
+
+        # 4. Log state
+        tracker.update(real_pf, dates[i], gross_portfolio=ideal_pf,
+            taxes=taxes, costs=costs, trade_deltas=trade_deltas)
 
     df_log, df_log_delta = tracker.to_dataframes()
 
@@ -131,9 +151,9 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     print(f"Total compound return (net)    {tracker.compound_factor['net_assets_value'] * 100:.2f}%")
 
     print(f"Capitale iniziale {initial_value}")
-    print(f"Valore finale gross {portfolio.gross_assets_value:.2f}")
-    print(f"Capitale finale {portfolio.broker_assets_value:.2f}")
-    print(f"Capitale finale liquido {portfolio.net_assets_value:.2f}")
+    print(f"Valore finale gross {ideal_pf.broker_assets_value:.2f}")
+    print(f"Capitale finale {real_pf.broker_assets_value:.2f}")
+    print(f"Capitale finale liquido {real_pf.net_assets_value:.2f}")
 
     plt.semilogy(df_log.index, tracker.compound_return['gross_assets_value'], label='gross')
     plt.semilogy(df_log.index, tracker.compound_return['broker_assets_value'], label='broker')
