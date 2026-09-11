@@ -15,9 +15,9 @@ Un tool per simulare l'andamento di portafogli d'investimento pensato specificam
 Eseguire il notebook Backtester.ipynb. L'ultima cella genera dei widget interattivi che permettono di scegliere la asset allocation desiderata. Cliccando su Esegui Backtest, il codice restituisce l'output del backtest e genera due file xlsx che tracciano l'allocazione del portafoglio e i ribilanciament.
 
 ## Come testare (codespace):
-pullare le modifiche da questo branch:
+##pullare le modifiche da questo branch non dovrebbe essere necessario, ma di seguito la riga di codice:
 
-`git pull main`
+##`git pull main`
 
 creare virtual environment:
 
