@@ -1,4 +1,6 @@
 __pycache__/
+*png
 *.pyc
-*xls*
+.python-version
+*.csv
 
