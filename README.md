@@ -4,7 +4,7 @@ Portfolio Backtester simula l'evoluzione storica di un portafoglio tenendo conto
 
 ## Come avviare il backtester online
 
-Dalla pagina principale del repository GitHub:
+Da questa pagina:
 
 1. Cliccare sul pulsante verde **Code**.
 2. Selezionare la scheda **Codespaces**.
