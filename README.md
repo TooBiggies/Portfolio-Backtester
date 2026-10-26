@@ -1,5 +1,3 @@
-# Portfolio Backtester
-
 Portfolio Backtester simula l'evoluzione storica di un portafoglio tenendo conto dell'asset allocation, dei ribilanciamenti, delle commissioni, dei costi annuali e della fiscalità.
 
 ## Come avviare il backtester online
