@@ -251,12 +251,11 @@ class Rebalancer:
                 prices, and methods for `buy` and `sell` to estimate costs.
 
         Returns:
-            tuple[float, float, dict]: A tuple containing:
-                - total_tax (float): Estimated total capital gains tax payable.
-                - total_cost (float): Estimated total transaction fees/costs.
-                - trade_deltas (dict): Mapping of asset names to monetary value of the trade.
-                    Positive values indicate buys, negative values indicate sells.
-                    Returns zeros for all assets if the threshold is not breached.
+            tuple[dict, dict, dict]: A tuple containing, in this order:
+                - costs (dict): fee per asset, negative (cash out); 0.0 if no rebalance.
+                - taxes (dict): capital gains tax per asset, negative; 0.0 if no rebalance.
+                - trade_deltas (dict): traded value per asset, positive = buy,
+                  negative = sell. All zeros if the threshold is not breached.
         """
 
         delta = self.target_weights - portfolio.weights
