@@ -44,7 +44,7 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     return df_prices, begin_date, end_date
 
 
-def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True, risk_free_rate=0.0):
+def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True, risk_free_rate=0.0, gov_share=None):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -111,7 +111,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     # Ideal portfolio (zero costs) — its "broker" will be labeled as "gross" in output
     ideal_pf, _ = Portfolio.from_weights(
         prices=initial_prices, value=initial_value,
-        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0., tax_rate=0.)
+        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0., tax_rate=0., gov_share=gov_share)
     ideal_rebalancer = Rebalancer(
         target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=0.)
 
@@ -119,7 +119,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     real_pf, fees = Portfolio.from_weights(
         prices=initial_prices, value=initial_value,
         weights=weights, brokerage_fee_rate=brokerage_fee_rate,
-        annual_costs_rate=annual_costs_rate, tax_rate=tax_rate)
+        annual_costs_rate=annual_costs_rate, tax_rate=tax_rate, gov_share=gov_share)
     real_rebalancer = Rebalancer(
         target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 
