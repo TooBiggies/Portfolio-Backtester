@@ -82,6 +82,32 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         - Prints summary statistics to the console:
     """
 
+    # --- validazione degli ingressi, prima di leggere i dati ---
+    # Pesi che non sommano a 1 non sono un errore innocuo: il ribilanciamento porta il
+    # portafoglio ai pesi target vendendo la quota non investita, e il ricavato sparisce
+    # (non esiste un conto liquidita'). Il capitale decade verso zero senza alcun errore:
+    # con pesi che sommano a 0,5 ogni ribilanciamento dimezza il valore (issue #62).
+    if not weights:
+        raise ValueError("weights e' vuoto: nessun asset da simulare")
+    negativi = {a: w for a, w in weights.items() if float(w or 0.0) < 0.0}
+    if negativi:
+        raise ValueError(f"I pesi non possono essere negativi: {negativi}")
+    somma_pesi = sum(float(w or 0.0) for w in weights.values())
+    if abs(somma_pesi - 1.0) > 1e-6:
+        raise ValueError(
+            f"I pesi devono sommare a 1.0, la somma e' {somma_pesi:.6f}. "
+            f"Pesi ricevuti: {dict(weights)}")
+
+    # Capitale non positivo: con initial_value=0 il ciclo di convergenza del
+    # ribilanciamento calcola 0/0 = NaN, e `NaN < 1e-8` e' sempre falso: non termina
+    # piu' (issue #66). Con capitale negativo il primo riacquisto non e' finanziabile.
+    try:
+        capitale = float(initial_value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Il capitale iniziale deve essere un numero, ricevuto {initial_value!r}")
+    if not capitale > 0:      # cattura anche NaN
+        raise ValueError(f"Il capitale iniziale deve essere positivo, ricevuto {initial_value!r}")
+
     asset_columns=list(weights.keys())
     prices, begin_date, end_date = prepare_price_dataframe(pd.read_csv("./Timeseries.csv", sep=";"), begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
     # Ogni asset con peso > 0 deve avere un prezzo per tutta la finestra richiesta.
