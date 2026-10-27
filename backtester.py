@@ -83,6 +83,24 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
     asset_columns=list(weights.keys())
     prices, begin_date, end_date = prepare_price_dataframe(pd.read_csv("./Timeseries.csv", sep=";"), begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
+    # Ogni asset con peso > 0 deve avere un prezzo per tutta la finestra richiesta.
+    # Un NaN (asset che parte dopo, o che finisce prima) rende il valore di
+    # portafoglio non finito: storicamente il risultato era "capitale finale 0.00".
+    assets_attivi = [c for c in asset_columns if float(weights.get(c, 0.0) or 0.0) > 0.0]
+    incompleti = [c for c in assets_attivi if prices[c].isna().any()]
+    if incompleti:
+        dettagli = []
+        for c in incompleti:
+            validi = prices[c].dropna().index
+            dettagli.append(f"{c}: nessun prezzo nella finestra" if len(validi) == 0
+                            else f"{c}: prezzi solo dal {validi[0].date()} al {validi[-1].date()}")
+        raise ValueError(
+            "Finestra temporale non coperta da tutti gli asset selezionati "
+            f"(richiesta {prices.index[0].date()} / {prices.index[-1].date()}): "
+            + "; ".join(dettagli)
+            + ". Restringere la data iniziale o finale all'intervallo comune."
+        )
+
     dates = prices.index
     initial_prices = prices.iloc[0]
 
