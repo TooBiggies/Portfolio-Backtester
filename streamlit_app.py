@@ -74,15 +74,20 @@ scelta_preset = st.selectbox("Portafoglio predefinito", list(PRESET),
 st.button("Carica il portafoglio predefinito", on_click=carica_preset,
           args=(scelta_preset, assets), width="stretch")
 defaults = {"VTSIM": 60.0, "GLDSIM": 10.0, "ZROZSIM": 25.0, "DBMFSIM": 5.0}
+
+# Il valore iniziale vive SOLO in session_state: passare anche value= al widget farebbe
+# convivere due sorgenti di verita' (Streamlit avverte: "created with a default value but
+# also had its value set via the Session State API"). Cosi' i preset possono sovrascriverlo.
+for _asset in assets:
+    st.session_state.setdefault(f"w_{_asset}", float(defaults.get(_asset, 0.0)))
 cols = st.columns(3)
 weights_pct = {}
 for i, asset in enumerate(assets):
     with cols[i % 3]:
         nome, descrizione = ASSET_INFO.get(asset, (asset, "Strumento del dataset."))
         weights_pct[asset] = st.number_input(
-            f"{asset} — {nome} (%)", min_value=0.0, max_value=100.0,
-            value=float(defaults.get(asset, 0.0)), step=1.0, key=f"w_{asset}",
-            help=f"{nome}: {descrizione}")
+            f"{asset} — {nome} (%)", min_value=0.0, max_value=100.0, step=1.0,
+            key=f"w_{asset}", help=f"{nome}: {descrizione}")
 
 total_weight = sum(weights_pct.values())
 st.metric("Totale allocazione", f"{total_weight:.2f}%")
