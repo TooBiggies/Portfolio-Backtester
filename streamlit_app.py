@@ -46,7 +46,7 @@ for i, asset in enumerate(assets):
 total_weight = sum(weights_pct.values())
 st.metric("Totale allocazione", f"{total_weight:.2f}%")
 
-if st.button("Esegui backtest", type="primary", use_container_width=True):
+if st.button("Esegui backtest", type="primary", width="stretch"):
     if begin_date >= end_date:
         st.error("La data iniziale deve precedere la data finale.")
     elif abs(total_weight - 100.0) > 0.01:
@@ -81,7 +81,7 @@ if st.button("Esegui backtest", type="primary", use_container_width=True):
             data=to_excel_bytes(df_log, df_delta),
             file_name="portfolio_backtest.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+            width="stretch",
         )
         with st.expander("Anteprima risultati"):
-            st.dataframe(df_log.tail(100), use_container_width=True)
+            st.dataframe(df_log.tail(100), width="stretch")
