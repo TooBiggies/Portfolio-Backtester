@@ -194,18 +194,22 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     print(f"Sharpe  (netto, rf {risk_free_rate * 100:.2f}%)  {_r(m['sharpe'])}")
     print(f"Sortino (netto)           {_r(m['sortino'])}")
 
-    plt.semilogy(df_log.index, tracker.compound_return['gross_assets_value'], label='gross')
-    plt.semilogy(df_log.index, tracker.compound_return['broker_assets_value'], label='broker')
-    plt.semilogy(df_log.index, tracker.compound_return['net_assets_value'], label='net')
-    plt.xlabel("Data")
-    plt.ylabel("Compound Return %")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    if save_outputs:
-        plt.savefig("plot.png")
-    if plot:
-        plt.show()
+    # La figura si crea solo se serve: con plot=False e save_outputs=False il grafico
+    # non lo vede nessuno, e crearlo dentro un thread che non e' il main (Streamlit,
+    # AppTest) con un backend interattivo fa terminare il processo.
+    if plot or save_outputs:
+        plt.semilogy(df_log.index, tracker.compound_return['gross_assets_value'], label='gross')
+        plt.semilogy(df_log.index, tracker.compound_return['broker_assets_value'], label='broker')
+        plt.semilogy(df_log.index, tracker.compound_return['net_assets_value'], label='net')
+        plt.xlabel("Data")
+        plt.ylabel("Compound Return %")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        if save_outputs:
+            plt.savefig("plot.png")
+        if plot:
+            plt.show()
     else:
         plt.close()
 
