@@ -46,4 +46,12 @@ jobs:
       - name: Test
         # I test leggono Timeseries.csv dalla radice del repo e il backend
         # matplotlib è senza display su un runner: nessuna configurazione extra.
-        run: python -m pytest tests -q --maxfail=1 -p no:cacheprovider
+        # `main` oggi contiene solo README e .github, senza codice né tests/: senza
+        # questa guardia ogni push su main sarebbe rosso per assenza della cartella,
+        # che non è un errore. L'esenzione vale solo per main.
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ] && [ ! -d tests ]; then
+            echo "main non contiene ancora il codice: nessun test da eseguire"
+            exit 0
+          fi
+          python -m pytest tests -q --maxfail=1 -p no:cacheprovider
