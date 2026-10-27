@@ -23,13 +23,25 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
         DataFrame with Date as index and assets as columns
     """
 
-    if begin_date is None:
-        begin_date = pd.to_datetime(df.dropna()[date_column].min())
-    if end_date is None:
-        end_date = pd.to_datetime(df.dropna()[date_column].max())
-
     df = df.copy()
     df[date_column] = pd.to_datetime(df[date_column], dayfirst=True, errors="coerce")
+
+    # La finestra di default si calcola sulle date GIA' interpretate. Prima si faceva
+    # min()/max() sulle stringhe: "03/01/2021" < "29/12/2020" in ordine alfabetico, quindi
+    # a cavallo d'anno la finestra usciva rovesciata e il risultato era vuoto. Lo stesso
+    # pd.to_datetime senza dayfirst=True leggeva all'americana ogni data con giorno <= 12
+    # ("05/02/2020" diventava il 2 maggio). Le righe con prezzi mancanti restano escluse,
+    # come prima: la finestra deve coprire solo il tratto popolato.
+    if begin_date is None or end_date is None:
+        righe_complete = df.dropna(subset=[c for c in df.columns if c != date_column])
+        date_valide = righe_complete[date_column].dropna()
+        if date_valide.empty:
+            raise ValueError(f"Nessuna data valida nella colonna '{date_column}'")
+        if begin_date is None:
+            begin_date = date_valide.min()
+        if end_date is None:
+            end_date = date_valide.max()
+
     df = df[(df[date_column] >= pd.to_datetime(begin_date))].copy()
     df = df[(df[date_column] <= pd.to_datetime(end_date))].copy()
     df = df.reset_index(drop=True)
