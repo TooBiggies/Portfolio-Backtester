@@ -3,7 +3,6 @@ import pandas as pd
 
 from engine import Portfolio, PortfolioTracker, Rebalancer
 
-
 def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=None, date_column='Date'):
     """
     Convert loaded CSV into price DataFrame with Date as index.
@@ -44,7 +43,7 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     return df_prices, begin_date, end_date
 
 
-def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False):
+def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -129,11 +128,11 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
     df_log, df_log_delta = tracker.to_dataframes()
 
-    df_log.to_excel("output_ptf.xlsx")
-    df_log_delta.to_excel("output_ptf_delta.xlsx")
-
-    df_log.to_csv("output_ptf.csv")
-    df_log_delta.to_csv("output_ptf_delta.csv")
+    if save_outputs:
+        df_log.to_excel("output_ptf.xlsx")
+        df_log_delta.to_excel("output_ptf_delta.xlsx")
+        df_log.to_csv("output_ptf.csv")
+        df_log_delta.to_csv("output_ptf_delta.csv")
 
     years = round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2)
 
@@ -163,10 +162,25 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    if not plot:
+    if save_outputs:
         plt.savefig("plot.png")
+    if plot:
+        plt.show()
     else:
-        plt.plot()
+        plt.close()
+
+    summary = {
+        "begin_date": pd.to_datetime(begin_date),
+        "end_date": pd.to_datetime(end_date),
+        "years": years,
+        "cagr_gross": tracker.compound_factor["gross_assets_value"] ** (1 / years) - 1,
+        "cagr_broker": tracker.compound_factor["broker_assets_value"] ** (1 / years) - 1,
+        "cagr_net": tracker.compound_factor["net_assets_value"] ** (1 / years) - 1,
+        "final_gross": ideal_pf.broker_assets_value,
+        "final_broker": real_pf.broker_assets_value,
+        "final_net": real_pf.net_assets_value,
+    }
+    return df_log, df_log_delta, summary
 
 
 if __name__ == "__main__":

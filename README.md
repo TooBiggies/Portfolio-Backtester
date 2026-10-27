@@ -1,42 +1,90 @@
-# Portfolio Backtester (Focus Italia) 🇮🇹
+Portfolio Backtester simula l'evoluzione storica di un portafoglio tenendo conto dell'asset allocation, dei ribilanciamenti, delle commissioni, dei costi annuali e della fiscalità.
 
-Un tool per simulare l'andamento di portafogli d'investimento pensato specificamente per andare oltre i classici calcoli dei rendimenti lordi, permettendo di comprendere come la **tassazione** e i **costi operativi** influiscano sulla crescita del capitale nel tempo.
+## Come avviare il backtester online
 
-## 🎯 Cosa permette di fare
+Da questa pagina:
 
-* **Modellazione dei costi reali:** Il tool integra parametri fondamentali come **spread**, **commissioni** e **tracking difference**. Questi costi sono aggregati logicamente per riflettere l'operatività reale: 
-    * I costi "spot" sono applicati sia in acquisto che in vendita (commissioni e spread).
-    * La componente fiscale sulle plusvalenze viene calcolata al momento della vendita.
-    * I costi ricorrenti, come l'imposta di bollo e la tracking difference, vengono applicati su base giornaliera.
-      
-* **Rendimenti reali (Netti):** Confronto tra la crescita lorda del mercato e il rendimento effettivamente disponibile per l'investitore dopo tasse e costi.
-  
-* **Analisi dei ribilanciamenti:** Valutazione dell'impatto fiscale e commissionale quando si vendono quote per riportare il portafoglio all'asset allocation desiderata.
+1. Cliccare sul pulsante verde **Code**.
+2. Selezionare la scheda **Codespaces**.
+3. Cliccare su **Create codespace on main**.
+4. Attendere l'apertura dell'ambiente di sviluppo nel browser.
+5. Aprire il terminale dal menu **Terminal > New Terminal**.
+6. Installare le dipendenze:
 
-## ⚠️ Nota
-Questo strumento è creato a scopo informativo e di studio personale. Non fornisce consigli finanziari o fiscali e i risultati delle simulazioni non sono garanzia di rendimenti futuri.
+```bash
+python -m pip install -r requirements.txt
+```
 
+7. Avviare l'applicazione:
 
-## Come testare (notebook):
-Eseguire il notebook Backtester.ipynb. L'ultima cella genera dei widget interattivi che permettono di scegliere la asset allocation desiderata. Cliccando su Esegui Backtest, il codice restituisce l'output del backtest e genera due file xlsx che tracciano l'allocazione del portafoglio e i ribilanciament.
+```bash
+python -m streamlit run streamlit_app.py
+```
 
-## Come testare (codespace):
-Cliccare sul tasto verde "<> Code" e poi su "+", si aprirà una macchina virtuale su cui è clonato il branch.
-Posizionarsi nel terminale in basso e digitare i comandi descritti.
+8. Quando il Codespace segnala che l'applicazione è disponibile sulla porta `8501`, cliccare su **Open in Browser**.
 
-pullare le modifiche da questo branch:
-`git pull develop`
+Se la notifica non compare, aprire la scheda **Porte**, individuare la porta `8501` e cliccare sull'icona per aprirla nel browser.
 
-creare virtual environment:
-`python3 -m venv .venv`
+## Come utilizzare l'applicazione
 
-attivare virtual environment:
-`source .venv/bin/activate`
+Nella pagina dell'applicazione è possibile configurare:
 
-installare dipendenze:
-`pip install -r requirements.txt`
+- capitale iniziale;
+- data iniziale e finale;
+- peso percentuale di ciascun asset;
+- costi di negoziazione;
+- costi annuali;
+- aliquota fiscale;
+- soglia di ribilanciamento.
 
-runnare:
-`python backtester.py`
+La somma dei pesi degli asset deve essere pari al `100%`.
 
-questo produce `output_ptf.xlsx` e `output_ptf_delta.xlsx`.
+Dopo aver impostato i parametri, cliccare su **Esegui backtest**.
+
+## Risultati
+
+Al termine dell'elaborazione, l'applicazione mostra:
+
+- valore finale lordo;
+- valore finale presso il broker;
+- valore finale netto;
+- CAGR lordo;
+- CAGR presso il broker;
+- CAGR netto;
+- andamento storico del portafoglio.
+
+### GrossPortfolioValue
+
+Valore del portafoglio ideale simulato senza commissioni di negoziazione, costi annuali e imposte sulle plusvalenze realizzate.
+
+### BrokerPortfolioValue
+
+Valore degli asset effettivamente detenuti nel portafoglio reale, dopo l'applicazione dei costi e delle imposte già sostenuti durante la simulazione.
+
+### Net
+
+Valore stimato del portafoglio reale al netto dei costi e delle imposte applicabili in caso di liquidazione.
+
+La differenza tra `GrossPortfolioValue` e `BrokerPortfolioValue` rappresenta l'effetto cumulato dei costi e della fiscalità, compreso il mancato rendimento sul capitale utilizzato per sostenere tali oneri.
+
+## Esportazione dei risultati
+
+Il pulsante **Scarica risultati Excel** genera un file con due fogli:
+
+- `Portfolio`: evoluzione giornaliera del portafoglio;
+- `Rebalancing`: operazioni e variazioni registrate durante i ribilanciamenti.
+
+## Terminare la sessione
+
+Per interrompere Streamlit, tornare al terminale e premere `Ctrl+C`.
+
+Al termine dell'utilizzo è consigliabile arrestare o eliminare il Codespace per evitare di consumare inutilmente le ore e lo spazio disponibili.
+
+## Note
+
+- Le date devono rientrare nell'intervallo disponibile nelle serie storiche.
+- La data iniziale deve precedere la data finale.
+- I pesi degli asset devono sommare al `100%`.
+- Le percentuali inserite vengono convertite automaticamente in valori decimali.
+- I risultati dipendono dalla qualità e dalla completezza delle serie storiche.
+- Il backtest non costituisce una previsione dei rendimenti futuri.
