@@ -4,7 +4,7 @@ import numpy as np
 from contextlib import contextmanager
 
 class Portfolio:
-    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None):
+    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26):
         """
         Initializes a Portfolio instance with price data and financial settings.
 
@@ -26,6 +26,10 @@ class Portfolio:
 
         self.brokerage_fee_rate = brokerage_fee_rate
         self.initial_value = initial_value
+        # Aliquota per l'imposta di uscita (net_assets_value / cash_out_costs).
+        # Prima era cablata a 0.26 dentro cash_out_costs: il "netto" ignorava
+        # l'aliquota configurata nel backtest.
+        self.tax_rate = tax_rate
 
         if ter is None:
             self.ter = pd.Series(0.0, index=prices.index, dtype='float64')
@@ -35,7 +39,7 @@ class Portfolio:
         self.bollo = pd.Series(0.002/252, index=prices.index) # assumo di pagare ogni giorno lo 0.2/252 del controvalore giornaliero
 
     @classmethod
-    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate):
+    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate: float = 0.26):
         """
         Factory method to create a Portfolio and immediately allocate
         capital based on target weights at T=0.
@@ -56,6 +60,7 @@ class Portfolio:
             initial_value=value,
             brokerage_fee_rate=brokerage_fee_rate,
             ter=ter,
+            tax_rate=tax_rate,
         )
 
         fees = {}
@@ -154,7 +159,7 @@ class Portfolio:
 
         return fee
 
-    def sell(self, price: float, asset: str, units: float, tax_rate: float=0.26):
+    def sell(self, price: float, asset: str, units: float, tax_rate: float = None):
         """
         Executes a sale order for a specific asset, calculating tax and fees.
 
@@ -176,7 +181,8 @@ class Portfolio:
             raise ValueError("Cannot sell more than held")
         units = min(units, self.holdings[asset])
         pmc = self._pmc(asset)
-        tax = max(0.0, units * (price - pmc)) * tax_rate
+        rate = self.tax_rate if tax_rate is None else tax_rate
+        tax = max(0.0, units * (price - pmc)) * rate
         fee = units * price * self.brokerage_fee_rate
 
         self.holdings[asset] -= units
@@ -184,7 +190,7 @@ class Portfolio:
 
         return (fee, tax)
 
-    def trade(self, asset: str, units: float, tax_rate: float=0.26):
+    def trade(self, asset: str, units: float, tax_rate: float = None):
         """
         Convenience method to handle buying or selling an asset based on the sign of units.
 
@@ -200,13 +206,14 @@ class Portfolio:
         price = self.prices[asset]
         return self.sell(price, asset, -units, tax_rate) if units < 0 else self.buy(price, asset, units)
 
-    def cash_out_costs(self, tax_rate: float=0.26):
+    def cash_out_costs(self, tax_rate: float = None):
         "sell everything — returns a Series of exit costs per asset"
 
+        rate = self.tax_rate if tax_rate is None else tax_rate
         costs_per_asset = pd.Series(0., index=self.holdings.index)
         with self.simulate_transactions() as temp:
             for asset in temp.holdings.index:
-                fee, tax = temp.sell(temp.prices[asset], asset, temp.holdings[asset], tax_rate)
+                fee, tax = temp.sell(temp.prices[asset], asset, temp.holdings[asset], rate)
                 costs_per_asset[asset] = fee + tax
 
             return costs_per_asset
