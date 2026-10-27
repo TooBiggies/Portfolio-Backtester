@@ -38,7 +38,7 @@ nest-asyncio==1.6.0
 numpy==2.4.2
 openpyxl==3.1.5
 packaging==26.0
-pandas==2.3.3
+pandas==3.1.0
 parso==0.8.6
 pexpect==4.9.0
 pillow==12.1.1
@@ -61,7 +61,7 @@ rpds-py==0.30.0
 six==1.17.0
 smmap==5.0.2
 stack-data==0.6.3
-streamlit==1.54.0
+streamlit==1.66.1
 tenacity==9.1.4
 toml==0.10.2
 tornado==6.5.4
