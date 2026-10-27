@@ -30,10 +30,16 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     # Le date di default vanno cercate DOPO la conversione: sul formato gg/mm/aaaa
     # il minimo e il massimo alfabetici non coincidono con quelli cronologici
     # ("31/01/2020" > "01/02/2020"), e la finestra verrebbe tagliata a caso.
-    if begin_date is None:
-        begin_date = df[date_column].min()
-    if end_date is None:
-        end_date = df[date_column].max()
+    if begin_date is None or end_date is None:
+        date_valide = df[date_column].dropna()
+        if date_valide.empty:
+            # senza questo, un CSV con date illeggibili restituiva un DataFrame vuoto:
+            # indistinguibile da un risultato legittimo.
+            raise ValueError(f"Nessuna data valida nella colonna '{date_column}'")
+        if begin_date is None:
+            begin_date = date_valide.min()
+        if end_date is None:
+            end_date = date_valide.max()
 
     df = df[(df[date_column] >= pd.to_datetime(begin_date))].copy()
     df = df[(df[date_column] <= pd.to_datetime(end_date))].copy()
