@@ -193,6 +193,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         print(f"  da {m['peak_date'].date()} a {m['trough_date'].date()}  ({m['amount']:.2f} EUR)")
     print(f"Sharpe  (netto, rf {risk_free_rate * 100:.2f}%)  {_r(m['sharpe'])}")
     print(f"Sortino (netto)           {_r(m['sortino'])}")
+    print(f"Ulcer index (netto)       {_p(m['ulcer_index'])}")
+    print(f"Calmar (netto)            {_r(m['calmar'])}")
 
     plt.semilogy(df_log.index, tracker.compound_return['gross_assets_value'], label='gross')
     plt.semilogy(df_log.index, tracker.compound_return['broker_assets_value'], label='broker')

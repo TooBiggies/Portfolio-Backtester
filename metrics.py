@@ -75,6 +75,19 @@ def max_drawdown(values: pd.Series) -> dict:
     }
 
 
+def ulcer_index(values: pd.Series):
+    """Ulcer Index (Martin): radice della media dei drawdown al quadrato.
+
+    A differenza del max drawdown misura *quanto a lungo* si sta sotto il massimo,
+    non solo la profondità del punto peggiore. Valore positivo (0,0592 = 5,92%).
+    """
+    v = pd.Series(values).astype(float).dropna()
+    if len(v) < 2:
+        return None
+    dd = v / v.cummax() - 1.0
+    return float(((dd ** 2).mean()) ** 0.5)
+
+
 def risk_metrics(values: pd.Series, risk_free_rate: float = 0.0) -> dict:
     """Volatilità, Sharpe, Sortino e max drawdown di una serie di valori.
 
@@ -91,6 +104,8 @@ def risk_metrics(values: pd.Series, risk_free_rate: float = 0.0) -> dict:
         "volatility": None,
         "sharpe": None,
         "sortino": None,
+        "ulcer_index": ulcer_index(v),
+        "calmar": None,
         **{k: dd[k] for k in ("max_drawdown", "peak_date", "trough_date",
                               "peak_value", "trough_value", "amount")},
     }
@@ -110,5 +125,15 @@ def risk_metrics(values: pd.Series, risk_free_rate: float = 0.0) -> dict:
     downside_dev = float((downside.clip(upper=0.0) ** 2).mean() ** 0.5) * math.sqrt(ppy)
     if downside_dev > 0:
         out["sortino"] = excess_ann / downside_dev
+
+    # Calmar: rendimento annualizzato **geometrico** (lo stesso CAGR del report)
+    # diviso il valore assoluto del max drawdown. Senza drawdown non è definito.
+    try:
+        anni = len(rets) / ppy
+        cagr = float((1.0 + rets).prod()) ** (1.0 / anni) - 1.0 if anni > 0 else None
+    except Exception:
+        cagr = None
+    if cagr is not None and out["max_drawdown"] not in (None, 0.0):
+        out["calmar"] = cagr / abs(out["max_drawdown"])
 
     return out
