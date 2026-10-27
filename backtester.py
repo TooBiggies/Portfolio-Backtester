@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from engine import Portfolio, PortfolioTracker, Rebalancer
+from metrics import risk_metrics
 
 def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=None, date_column='Date'):
     """
@@ -43,7 +44,7 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     return df_prices, begin_date, end_date
 
 
-def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True):
+def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True, risk_free_rate=0.0):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -128,6 +129,14 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
     df_log, df_log_delta = tracker.to_dataframes()
 
+    # Metriche di rischio (issue #17, #18) sulle tre serie, con le stesse convenzioni
+    # dichiarate in metrics.py. Un valore non calcolabile resta None.
+    serie = {"broker": "BrokerPortfolioValue", "net": "Net"}
+    if "GrossPortfolioValue" in df_log.columns:
+        serie["gross"] = "GrossPortfolioValue"
+    risk = {nome: risk_metrics(df_log[col], risk_free_rate=risk_free_rate)
+            for nome, col in serie.items()}
+
     if save_outputs:
         df_log.to_excel("output_ptf.xlsx")
         df_log_delta.to_excel("output_ptf_delta.xlsx")
@@ -154,6 +163,16 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     print(f"Capitale finale {real_pf.broker_assets_value:.2f}")
     print(f"Capitale finale liquido {real_pf.net_assets_value:.2f}")
 
+    m = risk["net"]
+    def _p(x): return "n.d." if x is None else f"{x * 100:.2f}%"
+    def _r(x): return "n.d." if x is None else f"{x:.2f}"
+    print(f"Volatilità annua (netta)  {_p(m['volatility'])}")
+    print(f"Max drawdown (netto)      {_p(m['max_drawdown'])}")
+    if m["peak_date"] is not None:
+        print(f"  da {m['peak_date'].date()} a {m['trough_date'].date()}  ({m['amount']:.2f} EUR)")
+    print(f"Sharpe  (netto, rf {risk_free_rate * 100:.2f}%)  {_r(m['sharpe'])}")
+    print(f"Sortino (netto)           {_r(m['sortino'])}")
+
     plt.semilogy(df_log.index, tracker.compound_return['gross_assets_value'], label='gross')
     plt.semilogy(df_log.index, tracker.compound_return['broker_assets_value'], label='broker')
     plt.semilogy(df_log.index, tracker.compound_return['net_assets_value'], label='net')
@@ -179,6 +198,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         "final_gross": ideal_pf.broker_assets_value,
         "final_broker": real_pf.broker_assets_value,
         "final_net": real_pf.net_assets_value,
+        "risk_metrics": risk,
+        "risk_free_rate": risk_free_rate,
     }
     return df_log, df_log_delta, summary
 
