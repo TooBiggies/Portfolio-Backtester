@@ -143,9 +143,12 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         df_log.to_csv("output_ptf.csv")
         df_log_delta.to_csv("output_ptf_delta.csv")
 
-    years = round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2)
+    # Gli anni vanno calcolati sullo span effettivamente simulato: se la serie
+    # parte dopo la data richiesta (o finisce prima), usare le date richieste
+    # sottostima o sovrastima il CAGR.
+    years = round(((dates[-1] - dates[0]).days / 365.25), 2)
 
-    print(f"Orizzonte temporale   {begin_date} / {end_date}")
+    print(f"Orizzonte temporale   {dates[0].date()} / {dates[-1].date()}")
     print(
         f"Anni in simulazione   {years}"
     )
@@ -189,8 +192,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         plt.close()
 
     summary = {
-        "begin_date": pd.to_datetime(begin_date),
-        "end_date": pd.to_datetime(end_date),
+        "begin_date": dates[0],
+        "end_date": dates[-1],
         "years": years,
         "cagr_gross": tracker.compound_factor["gross_assets_value"] ** (1 / years) - 1,
         "cagr_broker": tracker.compound_factor["broker_assets_value"] ** (1 / years) - 1,
