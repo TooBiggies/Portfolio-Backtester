@@ -21,6 +21,32 @@ def portafoglio(asset="GOV", prezzo=10.0, gov_share=None, tax_rate=0.26):
     return pf
 
 
+def test_lordo_indipendente_dai_parametri_fiscali():
+    """Il portafoglio ideale non paga imposte: il lordo non deve muoversi al variare di
+    aliquota, quota white list, commissioni o costi annui.
+
+    Regressione: il portafoglio ideale riceveva gov_share con tax_rate=0, quindi il 12,5%
+    sulla quota veniva addebitato anche nel run a costi zero e il lordo scendeva da
+    37.388,49 a 36.688,50 (Treasury al 100%) e a 36.521,06 (quota 20% su VTSIM).
+    """
+    from backtester import backtest
+
+    pesi = {"VTSIM": 0.6, "GLDSIM": 0.1, "ZROZSIM": 0.25, "DBMFSIM": 0.05}
+    base = dict(initial_value=10000, weights=pesi,
+                begin_date=pd.Timestamp("2010-01-02"), end_date=pd.Timestamp("2025-09-01"),
+                save_outputs=False)
+    configurazioni = [
+        dict(tax_rate=0.0, gov_share={}),
+        dict(tax_rate=0.26, gov_share={}),
+        dict(tax_rate=0.26, gov_share={"SHYSIM": 1.0, "IEFSIM": 1.0, "TLTSIM": 1.0, "ZROZSIM": 1.0}),
+        dict(tax_rate=0.26, gov_share={"VTSIM": 0.2, "ZROZSIM": 1.0}),
+        dict(tax_rate=0.26, gov_share={"ZROZSIM": 1.0}, brokerage_fee_rate=0.0029),
+        dict(tax_rate=0.26, gov_share={"ZROZSIM": 1.0}, annual_costs_rate=0.002),
+    ]
+    lordi = [backtest(**base, **cfg)[2]["final_gross"] for cfg in configurazioni]
+    assert lordi == pytest.approx([lordi[0]] * len(lordi), rel=0, abs=1e-6), lordi
+
+
 def test_aliquota_effettiva_per_quota_white_list():
     pf = portafoglio(gov_share={"GOV": 1.0})
     assert pf.tax_rate_for("GOV") == pytest.approx(0.125, abs=1e-12)

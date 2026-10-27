@@ -108,10 +108,15 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     # Initialize tracker
     tracker = PortfolioTracker(asset_columns=asset_columns, begin_date=begin_date)
 
-    # Ideal portfolio (zero costs) — its "broker" will be labeled as "gross" in output
+    # Ideal portfolio (zero costs) — its "broker" will be labeled as "gross" in output.
+    # gov_share NON va passato: tax_rate_for() vale (1-quota)*tax_rate + quota*gov_rate, quindi
+    # con tax_rate=0 il solo gov_share farebbe pagare il 12,5% sui titoli di Stato anche nel
+    # portafoglio a costi zero, e il "lordo" smetterebbe di essere lordo (37.388,49 senza quota
+    # contro 36.688,50 con i Treasury al 100%: 700 EUR di imposte nascoste nel benchmark).
+    # Il portafoglio ideale non ha parametri fiscali.
     ideal_pf, _ = Portfolio.from_weights(
         prices=initial_prices, value=initial_value,
-        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0., tax_rate=0., gov_share=gov_share)
+        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0., tax_rate=0., gov_share=None)
     ideal_rebalancer = Rebalancer(
         target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=0.)
 
