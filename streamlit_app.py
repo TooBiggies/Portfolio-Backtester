@@ -67,6 +67,14 @@ if st.button("Esegui backtest", type="primary", use_container_width=True):
                 save_outputs=False,
             )
 
+        risk = (summary.get("risk_metrics") or {}).get("net") or {}
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Volatilità annua", f"{risk['volatility']:.2%}" if risk.get("volatility") is not None else "n.d.")
+        r2.metric("Max drawdown", f"{risk['max_drawdown']:.2%}" if risk.get("max_drawdown") is not None else "n.d.")
+        r3.metric("Sharpe / Sortino",
+                  " / ".join(f"{risk[k]:.2f}" if risk.get(k) is not None else "n.d."
+                             for k in ("sharpe", "sortino")))
+
         c1, c2, c3 = st.columns(3)
         c1.metric("Valore finale lordo", f"€ {summary['final_gross']:,.2f}", f"CAGR {summary['cagr_gross']:.2%}")
         c2.metric("Valore finale broker", f"€ {summary['final_broker']:,.2f}", f"CAGR {summary['cagr_broker']:.2%}")

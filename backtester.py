@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from engine import Portfolio, PortfolioTracker, Rebalancer
+from metrics import risk_metrics
 
 def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=None, date_column='Date'):
     """
@@ -43,7 +44,7 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     return df_prices, begin_date, end_date
 
 
-def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True):
+def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True, risk_free_rate=0.0):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -83,6 +84,24 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
     asset_columns=list(weights.keys())
     prices, begin_date, end_date = prepare_price_dataframe(pd.read_csv("./Timeseries.csv", sep=";"), begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
+    # Ogni asset con peso > 0 deve avere un prezzo per tutta la finestra richiesta.
+    # Un NaN (asset che parte dopo, o che finisce prima) rende il valore di
+    # portafoglio non finito: storicamente il risultato era "capitale finale 0.00".
+    assets_attivi = [c for c in asset_columns if float(weights.get(c, 0.0) or 0.0) > 0.0]
+    incompleti = [c for c in assets_attivi if prices[c].isna().any()]
+    if incompleti:
+        dettagli = []
+        for c in incompleti:
+            validi = prices[c].dropna().index
+            dettagli.append(f"{c}: nessun prezzo nella finestra" if len(validi) == 0
+                            else f"{c}: prezzi solo dal {validi[0].date()} al {validi[-1].date()}")
+        raise ValueError(
+            "Finestra temporale non coperta da tutti gli asset selezionati "
+            f"(richiesta {prices.index[0].date()} / {prices.index[-1].date()}): "
+            + "; ".join(dettagli)
+            + ". Restringere la data iniziale o finale all'intervallo comune."
+        )
+
     dates = prices.index
     initial_prices = prices.iloc[0]
 
@@ -92,7 +111,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     # Ideal portfolio (zero costs) — its "broker" will be labeled as "gross" in output
     ideal_pf, _ = Portfolio.from_weights(
         prices=initial_prices, value=initial_value,
-        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0.)
+        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0., tax_rate=0.)
     ideal_rebalancer = Rebalancer(
         target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=0.)
 
@@ -100,7 +119,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     real_pf, fees = Portfolio.from_weights(
         prices=initial_prices, value=initial_value,
         weights=weights, brokerage_fee_rate=brokerage_fee_rate,
-        annual_costs_rate=annual_costs_rate)
+        annual_costs_rate=annual_costs_rate, tax_rate=tax_rate)
     real_rebalancer = Rebalancer(
         target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 
@@ -128,15 +147,26 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
     df_log, df_log_delta = tracker.to_dataframes()
 
+    # Metriche di rischio (issue #17, #18) sulle tre serie, con le stesse convenzioni
+    # dichiarate in metrics.py. Un valore non calcolabile resta None.
+    serie = {"broker": "BrokerPortfolioValue", "net": "Net"}
+    if "GrossPortfolioValue" in df_log.columns:
+        serie["gross"] = "GrossPortfolioValue"
+    risk = {nome: risk_metrics(df_log[col], risk_free_rate=risk_free_rate)
+            for nome, col in serie.items()}
+
     if save_outputs:
         df_log.to_excel("output_ptf.xlsx")
         df_log_delta.to_excel("output_ptf_delta.xlsx")
         df_log.to_csv("output_ptf.csv")
         df_log_delta.to_csv("output_ptf_delta.csv")
 
-    years = round(((pd.to_datetime(end_date) - pd.to_datetime(begin_date)).days / 365.25), 2)
+    # Gli anni vanno calcolati sullo span effettivamente simulato: se la serie
+    # parte dopo la data richiesta (o finisce prima), usare le date richieste
+    # sottostima o sovrastima il CAGR.
+    years = round(((dates[-1] - dates[0]).days / 365.25), 2)
 
-    print(f"Orizzonte temporale   {begin_date} / {end_date}")
+    print(f"Orizzonte temporale   {dates[0].date()} / {dates[-1].date()}")
     print(
         f"Anni in simulazione   {years}"
     )
@@ -154,6 +184,16 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     print(f"Capitale finale {real_pf.broker_assets_value:.2f}")
     print(f"Capitale finale liquido {real_pf.net_assets_value:.2f}")
 
+    m = risk["net"]
+    def _p(x): return "n.d." if x is None else f"{x * 100:.2f}%"
+    def _r(x): return "n.d." if x is None else f"{x:.2f}"
+    print(f"Volatilità annua (netta)  {_p(m['volatility'])}")
+    print(f"Max drawdown (netto)      {_p(m['max_drawdown'])}")
+    if m["peak_date"] is not None:
+        print(f"  da {m['peak_date'].date()} a {m['trough_date'].date()}  ({m['amount']:.2f} EUR)")
+    print(f"Sharpe  (netto, rf {risk_free_rate * 100:.2f}%)  {_r(m['sharpe'])}")
+    print(f"Sortino (netto)           {_r(m['sortino'])}")
+
     plt.semilogy(df_log.index, tracker.compound_return['gross_assets_value'], label='gross')
     plt.semilogy(df_log.index, tracker.compound_return['broker_assets_value'], label='broker')
     plt.semilogy(df_log.index, tracker.compound_return['net_assets_value'], label='net')
@@ -170,8 +210,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         plt.close()
 
     summary = {
-        "begin_date": pd.to_datetime(begin_date),
-        "end_date": pd.to_datetime(end_date),
+        "begin_date": dates[0],
+        "end_date": dates[-1],
         "years": years,
         "cagr_gross": tracker.compound_factor["gross_assets_value"] ** (1 / years) - 1,
         "cagr_broker": tracker.compound_factor["broker_assets_value"] ** (1 / years) - 1,
@@ -179,6 +219,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         "final_gross": ideal_pf.broker_assets_value,
         "final_broker": real_pf.broker_assets_value,
         "final_net": real_pf.net_assets_value,
+        "risk_metrics": risk,
+        "risk_free_rate": risk_free_rate,
     }
     return df_log, df_log_delta, summary
 
