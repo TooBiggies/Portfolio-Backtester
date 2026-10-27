@@ -64,11 +64,22 @@ def test_una_data_esplicita_vince_sulla_finestra_calcolata():
     assert list(prezzi.index) == [pd.Timestamp("2020-02-05")]
 
 
-def test_una_riga_con_data_valida_e_prezzo_mancante_entra_nella_finestra():
-    """Semantica attuale, fissata di proposito: la finestra di default guarda le date,
-    non la completezza dei prezzi. Un asset che non copre quel tratto viene poi fermato
-    dalla validazione di backtest() con un messaggio esplicito, non da un taglio muto."""
+def test_una_riga_con_data_valida_e_prezzo_mancante_non_allarga_la_finestra():
+    """La finestra di default copre solo il tratto in cui i dati esistono davvero:
+    una riga con data valida e prezzo mancante non deve allungarla (issue #8)."""
     _, inizio, fine = prepare_price_dataframe(
         dataframe(["01/02/2020", "03/02/2020", "31/12/2021"], [100.0, 101.0, None]))
     assert inizio == pd.Timestamp("2020-02-01")
-    assert fine == pd.Timestamp("2021-12-31")
+    assert fine == pd.Timestamp("2020-02-03")
+
+
+def test_la_finestra_default_e_quella_comune_a_tutti_gli_asset():
+    """Criterio di accettazione della issue #8: senza date, la data iniziale e' la meno
+    recente fra quelle in comune a tutti gli asset in portafoglio."""
+    df = pd.DataFrame({"Date": ["01/02/2020", "02/02/2020", "03/02/2020"],
+                       "AAA": [1.0, 1.0, 1.0],
+                       "BBB": [None, 1.0, 1.0]})
+    prezzi, inizio, fine = prepare_price_dataframe(df, asset_columns=["AAA", "BBB"])
+    assert inizio == pd.Timestamp("2020-02-02")
+    assert fine == pd.Timestamp("2020-02-03")
+    assert len(prezzi) == 2

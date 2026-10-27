@@ -25,13 +25,19 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
 
     df = df.copy()
     df[date_column] = pd.to_datetime(df[date_column], dayfirst=True, errors="coerce")
-    df = df.dropna(subset=[date_column])
 
-    # Le date di default vanno cercate DOPO la conversione: sul formato gg/mm/aaaa
-    # il minimo e il massimo alfabetici non coincidono con quelli cronologici
-    # ("31/01/2020" > "01/02/2020"), e la finestra verrebbe tagliata a caso.
+    if asset_columns is None:
+        asset_columns = [c for c in df.columns if c != date_column]
+
+    # La finestra di default si calcola sulle date GIA' interpretate e sulle sole righe
+    # in cui TUTTI gli asset selezionati hanno un prezzo: sul formato gg/mm/aaaa il
+    # minimo e il massimo alfabetici non coincidono con quelli cronologici
+    # ("31/01/2020" > "01/02/2020"), e una riga con date valida ma prezzi mancanti
+    # allargherebbe la finestra oltre i dati realmente disponibili (issue #8: la data
+    # iniziale deve essere la meno recente fra quelle in comune a tutti gli asset).
+    righe_complete = df.dropna(subset=asset_columns)
     if begin_date is None or end_date is None:
-        date_valide = df[date_column].dropna()
+        date_valide = righe_complete[date_column].dropna()
         if date_valide.empty:
             # senza questo, un CSV con date illeggibili restituiva un DataFrame vuoto:
             # indistinguibile da un risultato legittimo.
@@ -44,10 +50,6 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     df = df[(df[date_column] >= pd.to_datetime(begin_date))].copy()
     df = df[(df[date_column] <= pd.to_datetime(end_date))].copy()
     df = df.reset_index(drop=True)
-
-    if asset_columns is None:
-        # Auto-detect: exclude Date column
-        asset_columns = [col for col in df.columns if col != date_column]
 
     # Set Date as index
     df_prices = df.set_index(date_column)[asset_columns]
