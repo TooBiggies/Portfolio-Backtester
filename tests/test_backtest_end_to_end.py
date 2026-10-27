@@ -110,25 +110,9 @@ def test_i_pesi_richiesti_sono_quelli_di_partenza():
         assert prima[f"Broker_{asset}"] / totale == pytest.approx(peso, abs=1e-9)
 
 
-def test_pesi_parziali_investono_solo_la_quota_richiesta():
-    """Nessun conto liquidita' implicito: il peso mancante non e' investito.
-    Al giorno 0 il controvalore e' value*peso al netto delle commissioni."""
-    risultati, _, _ = esegui(weights={"VTSIM": 0.5}, tax_rate=0.26, **PERIODO, **COSTI)
-    assert risultati["BrokerPortfolioValue"].iloc[0] == pytest.approx(5000 / 1.0029, rel=1e-9)
-
-
-@pytest.mark.xfail(strict=False, reason="Difetto #62: i pesi che non sommano a 1 non sono "
-                   "validati e il ribilanciamento azzera il capitale (-100%). Quando la "
-                   "validazione entrera' in backtest() questo test passera' e il marcatore "
-                   "va tolto.")
-def test_pesi_che_non_sommano_a_uno_non_azzerano_il_capitale():
-    """Il capitale investito puo' scendere per il mercato, non sparire per un peso sbagliato."""
-    risultati, _, _ = esegui(weights={"VTSIM": 0.5}, tax_rate=0.26, **PERIODO, **COSTI)
-    iniziale = risultati["BrokerPortfolioValue"].iloc[0]
-    finale = risultati["BrokerPortfolioValue"].iloc[-1]
-    # il valore non arriva a zero esatto: decade a ~1e-230. Serve una soglia sensata.
-    assert finale > 0.5 * iniziale, f"capitale scomparso: {iniziale:.2f} -> {finale:.2e}"
-
+# I pesi che non sommano a 1 sono coperti da tests/test_validazione_ingressi.py (PR #72),
+# che li rifiuta in ingresso: qui non ha piu' senso misurare cosa succede dopo, perche'
+# backtest() non arriva a simulare.
 
 def test_soglia_altissima_non_produce_ribilanciamenti():
     risultati, _, _ = esegui(tax_rate=0.26, rebalance_threshold=1.0, **PERIODO, **COSTI)
