@@ -4,3 +4,8 @@ __pycache__/
 .python-version
 *.csv
 
+
+# artefatti di coverage, non vanno nel repo
+.coverage
+.coverage.*
+htmlcov/
