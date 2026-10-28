@@ -2,7 +2,7 @@
 
 Criterio: parti di `engine.py` / `backtester.py` / `metrics.py` che non erano coperte
 da nessun caso e su cui non era ancora emerso un difetto. Alcune hanno rivelato un
-difetto vero (marcato `xfail` con il numero di issue), le altre fissano comportamenti
+difetto vero (ora corretto, con il numero di issue nel test), le altre fissano comportamenti
 che oggi sono corretti ma che nessuno proteggeva.
 """
 import contextlib
@@ -130,19 +130,15 @@ def test_una_colonna_richiesta_assente_solleva_errore():
         prepare_price_dataframe(grezzo, asset_columns=["AAA", "BBB"])
 
 
-@pytest.mark.xfail(strict=False, reason="Issue #66: capitale iniziale 0 -> ciclo infinito "
-                   "nel ribilanciamento (V'/V = 0/0 = NaN, la convergenza non arriva mai). "
-                   "Quando backtest() rifiutera' un capitale non positivo questo test passera' "
-                   "e il marcatore va tolto.")
 def test_capitale_iniziale_zero_viene_rifiutato_subito():
+    """Issue #66, risolta dalla #72: prima il ciclo di convergenza non terminava."""
     with scadenza(8), pytest.raises(ValueError):
         backtest(0, {"VTSIM": 1.0}, begin_date=pd.Timestamp("2020-01-02"),
                  end_date=pd.Timestamp("2020-03-02"), save_outputs=False)
 
 
-@pytest.mark.xfail(strict=False, reason="Issue #66: capitale negativo -> ValueError "
-                   "«Cannot sell more than held», che non dice nulla sul capitale.")
 def test_capitale_negativo_viene_rifiutato_con_messaggio_chiaro():
+    """Issue #66, risolta dalla #72: prima il messaggio parlava di vendite."""
     with pytest.raises(ValueError, match="capitale"):
         backtest(-1000, {"VTSIM": 1.0}, begin_date=pd.Timestamp("2020-01-02"),
                  end_date=pd.Timestamp("2020-03-02"), save_outputs=False)

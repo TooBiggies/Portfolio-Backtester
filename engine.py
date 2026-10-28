@@ -4,8 +4,9 @@ import numpy as np
 from contextlib import contextmanager
 
 class Portfolio:
-    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26, gov_share: dict = None, gov_rate: float = 0.125):
-    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26, bollo_rate: float = 0.002):
+    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None,
+                 tax_rate: float = 0.26, bollo_rate: float = 0.002,
+                 gov_share: dict = None, gov_rate: float = 0.125):
         """
         Initializes a Portfolio instance with price data and financial settings.
 
@@ -49,8 +50,9 @@ class Portfolio:
         self.bollo = pd.Series(bollo_rate/252, index=prices.index)
 
     @classmethod
-    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate: float = 0.26, gov_share: dict = None, gov_rate: float = 0.125):
-    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate: float = 0.26, bollo_rate: float = 0.002):
+    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate,
+                     tax_rate: float = 0.26, bollo_rate: float = 0.002,
+                     gov_share: dict = None, gov_rate: float = 0.125):
         """
         Factory method to create a Portfolio and immediately allocate
         capital based on target weights at T=0.
@@ -72,9 +74,9 @@ class Portfolio:
             brokerage_fee_rate=brokerage_fee_rate,
             ter=ter,
             tax_rate=tax_rate,
+            bollo_rate=bollo_rate,
             gov_share=gov_share,
             gov_rate=gov_rate,
-            bollo_rate=bollo_rate,
         )
 
         fees = {}
