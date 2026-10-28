@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from backtester import backtest
-from metrics import (daily_returns, max_drawdown, periods_per_year, risk_metrics)
+from metrics import (daily_returns, max_drawdown, periods_per_year, risk_metrics, ulcer_index)
 
 W = {"VTSIM": 0.6, "GLDSIM": 0.1, "ZROZSIM": 0.25, "DBMFSIM": 0.05}
 
@@ -97,3 +97,47 @@ def test_max_drawdown_coerente_con_la_curva_di_valore():
     curva = df_log["Net"]
     atteso = float((curva / curva.cummax() - 1).min())
     assert s["risk_metrics"]["net"]["max_drawdown"] == pytest.approx(atteso, rel=1e-12)
+
+
+# --- Ulcer index e Calmar ratio (issue #19) ---------------------------------
+
+def test_ulcer_index_valori_noti():
+    idx = pd.date_range("2020-01-01", periods=4, freq="D")
+    atteso = math.sqrt((0.0 ** 2 + 0.0 ** 2 + 0.25 ** 2 + (1 - 110 / 120) ** 2) / 4)
+    assert ulcer_index(pd.Series([100.0, 120.0, 90.0, 110.0], index=idx)) == pytest.approx(atteso)
+
+
+def test_ulcer_index_zero_se_la_serie_sale_sempre():
+    idx = pd.date_range("2020-01-01", periods=4, freq="D")
+    assert ulcer_index(pd.Series([1.0, 2.0, 3.0, 4.0], index=idx)) == pytest.approx(0.0)
+
+
+def test_ulcer_index_serie_troppo_corta():
+    idx = pd.date_range("2020-01-01", periods=1, freq="D")
+    assert ulcer_index(pd.Series([100.0], index=idx)) is None
+
+
+def test_calmar_coerente_con_cagr_e_max_drawdown():
+    idx = pd.bdate_range("2020-01-01", periods=253)
+    rets = [0.01 if i % 3 else -0.02 for i in range(252)]
+    valori = [1000.0]
+    for r in rets:
+        valori.append(valori[-1] * (1 + r))
+    serie = pd.Series(valori, index=idx[: len(valori)])
+    m = risk_metrics(serie)
+    anni = (len(serie) - 1) / m["periods_per_year"]
+    cagr = (serie.iloc[-1] / serie.iloc[0]) ** (1 / anni) - 1
+    assert m["calmar"] == pytest.approx(cagr / abs(m["max_drawdown"]), rel=1e-9)
+
+
+def test_calmar_none_senza_drawdown():
+    idx = pd.date_range("2020-01-01", periods=300, freq="D")
+    assert risk_metrics(pd.Series([100.0] * 300, index=idx))["calmar"] is None
+
+
+def test_backtest_espone_ulcer_e_calmar():
+    _, _, s2 = backtest(10000, W, begin_date=pd.Timestamp("2020-01-02"),
+                        end_date=pd.Timestamp("2022-01-04"), save_outputs=False)
+    net = s2["risk_metrics"]["net"]
+    assert net["ulcer_index"] is not None and net["ulcer_index"] > 0
+    assert net["calmar"] is not None
