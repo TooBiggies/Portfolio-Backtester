@@ -100,24 +100,75 @@ def test_data_iniziale_dopo_la_finale_mostra_errore():
     assert at.error and "precedere" in at.error[0].value
 
 
-def test_backtest_valido_mostra_valori_finali_metriche_e_download():
+COLONNE_TABELLA = [
+    "Portafoglio", "CAGR", "Valore finale", "Volatilità annua", "Max drawdown",
+    "Sharpe (rf=0.00%)", "Sortino", "Ulcer index", "Calmar",
+]
+
+
+def tabella_comparativa(at):
+    """La tabella dei tre portafogli si riconosce dalla colonna 'Portafoglio':
+    nella pagina c'e' anche l'anteprima del log, che non ce l'ha."""
+    for riquadro in at.dataframe:
+        valore = riquadro.value
+        if getattr(valore, "columns", None) is not None and "Portafoglio" in valore.columns:
+            return valore
+    raise AssertionError("tabella comparativa non trovata nella pagina")
+
+
+def esegui_con_date_breve(at):
     import datetime as dt
-    at = avvia()
     at.date_input[0].set_value(dt.date(2020, 1, 2))
     at.date_input[1].set_value(dt.date(2020, 3, 2))
     at.run()
     esegui_backtest(at)
+
+
+def test_backtest_valido_mostra_la_tabella_e_il_download():
+    at = avvia()
+    esegui_con_date_breve(at)
     assert not at.exception
     assert not at.error
-    for etichetta in ("Valore finale lordo", "Valore finale broker", "Valore finale netto"):
-        assert metrica(at, etichetta).startswith("€")
-    for etichetta in ("Volatilità annua", "Max drawdown", "Sharpe / Sortino"):
-        assert etichetta in [m.label for m in at.metric]
+    tabella = tabella_comparativa(at)
+    assert list(tabella["Portafoglio"]) == ["Lordo", "Broker", "Netto"]
     assert at.get("download_button"), "manca il download dei risultati"
 
 
+def test_la_tabella_ha_tutte_le_metriche_per_ogni_portafoglio():
+    """Criteri di accettazione della issue #75: una tabella, tre righe (Lordo, Broker,
+    Netto), e per ognuna tutte le metriche disponibili, CAGR e valore finale compresi."""
+    at = avvia()
+    esegui_con_date_breve(at)
+    tabella = tabella_comparativa(at)
+    assert list(tabella.columns) == COLONNE_TABELLA
+    assert len(tabella) == 3
+    for colonna in COLONNE_TABELLA[1:]:
+        for valore in tabella[colonna]:
+            assert valore not in ("", "n.d.", None), f"{colonna} vuota: {valore}"
+
+
+def test_i_tre_portafogli_hanno_metriche_diverse_e_coerenti():
+    """Il lordo non paga nulla, il netto paga costi e imposte: rendimento e valore finale
+    devono degradare nell'ordine Lordo > Broker > Netto, con la stessa metodologia."""
+    at = avvia()
+    esegui_con_date_breve(at)
+    tabella = tabella_comparativa(at)
+
+    def numero_euro(testo):
+        return float(testo.replace("€", "").replace(".", "").replace(",", ".").strip())
+
+    def percentuale(testo):
+        return float(testo.replace("%", "").replace(",", ".").strip())
+
+    finali = [numero_euro(v) for v in tabella["Valore finale"]]
+    cagr = [percentuale(v) for v in tabella["CAGR"]]
+    assert finali[0] > finali[1] > finali[2], finali
+    assert cagr[0] > cagr[1] > cagr[2], cagr
+
+
 def test_l_aliquota_cambia_il_valore_netto_ma_non_il_lordo():
-    """La verifica che l'aliquota inserita in interfaccia arrivi davvero al motore."""
+    """La verifica che l'aliquota inserita in interfaccia arrivi davvero al motore:
+    stesso run con 0% e 26% -> lordo identico, netto diverso."""
     import datetime as dt
 
     def run_con(aliquota):
@@ -127,7 +178,9 @@ def test_l_aliquota_cambia_il_valore_netto_ma_non_il_lordo():
         at.date_input[1].set_value(dt.date(2020, 6, 1))
         at.run()
         esegui_backtest(at)
-        return metrica(at, "Valore finale lordo"), metrica(at, "Valore finale netto")
+        tabella = tabella_comparativa(at)
+        per_portafoglio = dict(zip(tabella["Portafoglio"], tabella["Valore finale"]))
+        return per_portafoglio["Lordo"], per_portafoglio["Netto"]
 
     lordo_0, netto_0 = run_con(0.0)
     lordo_26, netto_26 = run_con(26.0)
