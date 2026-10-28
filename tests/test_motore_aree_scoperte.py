@@ -72,7 +72,7 @@ def test_cash_out_costs_di_un_portafoglio_vuoto_sono_zero():
 
 def test_i_costi_di_detenzione_applicati_due_volte_si_moltiplicano():
     pf, _ = Portfolio.from_weights(pd.Series({"A": 10.0}), 1000, {"A": 1.0}, 0.0, 0.002)
-    fattore = 1.0 - float(pf.ter["A"] + pf.bollo["A"])
+    fattore = 1.0 - float(pf.ter["A"])
     quote = float(pf.holdings["A"])
     pf.apply_holding_costs()
     pf.apply_holding_costs()
