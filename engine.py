@@ -4,7 +4,7 @@ import numpy as np
 from contextlib import contextmanager
 
 class Portfolio:
-    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26):
+    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26, bollo_rate: float = 0.002):
         """
         Initializes a Portfolio instance with price data and financial settings.
 
@@ -36,10 +36,14 @@ class Portfolio:
         else:
             self.ter = ter.reindex(prices.index, fill_value=0.0)
 
-        self.bollo = pd.Series(0.002/252, index=prices.index) # assumo di pagare ogni giorno lo 0.2/252 del controvalore giornaliero
+        # Imposta di bollo annua sul controvalore, applicata pro-quota sui giorni di
+        # contrattazione. Parametro esplicito: il portafoglio ideale ("lordo") deve
+        # poter avere bollo 0, altrimenti anche il benchmark paga lo 0,20%.
+        self.bollo_rate = bollo_rate
+        self.bollo = pd.Series(bollo_rate/252, index=prices.index)
 
     @classmethod
-    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate: float = 0.26):
+    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate: float = 0.26, bollo_rate: float = 0.002):
         """
         Factory method to create a Portfolio and immediately allocate
         capital based on target weights at T=0.
@@ -61,6 +65,7 @@ class Portfolio:
             brokerage_fee_rate=brokerage_fee_rate,
             ter=ter,
             tax_rate=tax_rate,
+            bollo_rate=bollo_rate,
         )
 
         fees = {}
