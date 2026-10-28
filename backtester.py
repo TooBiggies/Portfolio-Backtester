@@ -82,6 +82,13 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         - Prints summary statistics to the console:
     """
 
+    # La docstring dichiara begin_date/end_date come str 'YYYY-MM-DD', ma il resto del
+    # modulo lavora con Timestamp: normalizziamo qui una volta sola.
+    if begin_date is not None and not isinstance(begin_date, pd.Timestamp):
+        begin_date = pd.to_datetime(begin_date)
+    if end_date is not None and not isinstance(end_date, pd.Timestamp):
+        end_date = pd.to_datetime(end_date)
+
     asset_columns=list(weights.keys())
     prices, begin_date, end_date = prepare_price_dataframe(pd.read_csv("./Timeseries.csv", sep=";"), begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
     # Ogni asset con peso > 0 deve avere un prezzo per tutta la finestra richiesta.
