@@ -241,7 +241,10 @@ class Rebalancer:
             threshold (float): Rebalancing trigger threshold (e.g., 0.05 for 5% deviation).
             tax_rate (float, optional): Capital gains tax rate. Defaults to 0.26.
         """
-        self.target_weights = target_weights
+        # La docstring dichiara 'pd.Series or dict': normalizziamo a Series, che e'
+        # l'unico tipo con cui funzionano la sottrazione e l'allineamento per asset.
+        self.target_weights = (target_weights if isinstance(target_weights, pd.Series)
+                               else pd.Series(target_weights))
         self.threshold = threshold
         self.tax_rate = tax_rate
 
