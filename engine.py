@@ -274,10 +274,23 @@ class Rebalancer:
             return {asset: 0.0 for asset in portfolio.assets}, {asset: 0.0 for asset in portfolio.assets}, {asset: 0.0 for asset in portfolio.assets}
 
         V = portfolio.broker_assets_value
+        if not np.isfinite(V) or V <= 0:
+            raise ValueError(
+                "Valore del portafoglio nullo o non finito all'atto del ribilanciamento: "
+                "verificare che ogni asset selezionato abbia un prezzo valido alla data iniziale."
+            )
         V_prime = V
         converged = False
+        iterations = 0
+        max_iterations = 50
 
         while not converged:
+            iterations += 1
+            if iterations > max_iterations:
+                raise RuntimeError(
+                    f"Il ribilanciamento non converge in {max_iterations} iterazioni: "
+                    "prezzi non finiti o portafoglio a valore nullo."
+                )
             with portfolio.simulate_transactions() as temp:
                 trades = {
                     asset: (self.target_weights[asset] * V_prime / temp.prices[asset]) - temp.holdings[asset]
@@ -295,6 +308,11 @@ class Rebalancer:
                         total_cost += fee
 
             new_V_prime = V - total_tax - total_cost
+            if not np.isfinite(new_V_prime):
+                raise ValueError(
+                    "Valore del portafoglio non finito durante il ribilanciamento "
+                    "(prezzi NaN nella finestra selezionata?)."
+                )
             converged = abs(new_V_prime / V_prime - 1) < 1e-8
             V_prime = new_V_prime
 
