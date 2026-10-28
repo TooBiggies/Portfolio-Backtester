@@ -154,22 +154,36 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
                 save_outputs=False,
             )
 
-        risk = (summary.get("risk_metrics") or {}).get("net") or {}
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric("Volatilità annua", f"{risk['volatility']:.2%}" if risk.get("volatility") is not None else "n.d.")
-        r2.metric("Max drawdown", f"{risk['max_drawdown']:.2%}" if risk.get("max_drawdown") is not None else "n.d.")
-        r3.metric("Sharpe / Sortino",
-                  " / ".join(f"{risk[k]:.2f}" if risk.get(k) is not None else "n.d."
-                             for k in ("sharpe", "sortino")))
-        r4.metric("Ulcer / Calmar",
-                  " / ".join((f"{risk[k]:.2%}" if (k == "ulcer_index" and risk.get(k) is not None)
-                              else (f"{risk[k]:.2f}" if risk.get(k) is not None else "n.d."))
-                             for k in ("ulcer_index", "calmar")))
+        # Tabella comparativa dei tre portafogli (issue #75).
+        # Le metriche NON si ricalcolano qui: il motore le produce già per tutte e tre le
+        # curve (summary["risk_metrics"]["gross"|"broker"|"net"]) con la stessa metodologia.
+        # Questa sezione si limita a disporle in righe, una per portafoglio.
+        def _percentuale(valore):
+            return "n.d." if valore is None else f"{valore * 100:.2f}%"
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Valore finale lordo", f"€ {summary['final_gross']:,.2f}", f"CAGR {summary['cagr_gross']:.2%}")
-        c2.metric("Valore finale broker", f"€ {summary['final_broker']:,.2f}", f"CAGR {summary['cagr_broker']:.2%}")
-        c3.metric("Valore finale netto", f"€ {summary['final_net']:,.2f}", f"CAGR {summary['cagr_net']:.2%}")
+        def _numero(valore):
+            return "n.d." if valore is None else f"{valore:.2f}"
+
+        metriche_tre_portafogli = []
+        for chiave, etichetta in (("gross", "Lordo"), ("broker", "Broker"), ("net", "Netto")):
+            m = (summary.get("risk_metrics") or {}).get(chiave) or {}
+            metriche_tre_portafogli.append({
+                "Portafoglio": etichetta,
+                "CAGR": _percentuale(summary.get(f"cagr_{chiave}")),
+                "Valore finale": f"€ {summary[f'final_{chiave}']:,.2f}",
+                "Volatilità annua": _percentuale(m.get("volatility")),
+                "Max drawdown": _percentuale(m.get("max_drawdown")),
+                f"Sharpe (rf={summary.get('risk_free_rate', 0.0) * 100:.2f}%)": _numero(m.get("sharpe")),
+                "Sortino": _numero(m.get("sortino")),
+                "Ulcer index": _percentuale(m.get("ulcer_index")),
+                "Calmar": _numero(m.get("calmar")),
+            })
+        st.dataframe(pd.DataFrame(metriche_tre_portafogli), hide_index=True, width="stretch")
+        st.caption(
+            "Le tre righe sono le stesse operazioni lette su tre curve di equity: il lordo non "
+            "paga nulla, il broker paga commissioni e costi, il netto paga anche le imposte. "
+            "La differenza fra le righe è l'effetto di costi e fiscalità, non un calcolo diverso."
+        )
 
         chart_cols = [c for c in ["GrossPortfolioValue", "BrokerPortfolioValue", "Net"] if c in df_log.columns]
         if chart_cols:
