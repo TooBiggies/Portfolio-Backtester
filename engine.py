@@ -4,7 +4,7 @@ import numpy as np
 from contextlib import contextmanager
 
 class Portfolio:
-    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26):
+    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26, bollo_rate: float = 0.002):
         """
         Initializes a Portfolio instance with price data and financial settings.
 
@@ -36,10 +36,14 @@ class Portfolio:
         else:
             self.ter = ter.reindex(prices.index, fill_value=0.0)
 
-        self.bollo = pd.Series(0.002/252, index=prices.index) # assumo di pagare ogni giorno lo 0.2/252 del controvalore giornaliero
+        # Imposta di bollo annua sul controvalore, applicata pro-quota sui giorni di
+        # contrattazione. Parametro esplicito: il portafoglio ideale ("lordo") deve
+        # poter avere bollo 0, altrimenti anche il benchmark paga lo 0,20%.
+        self.bollo_rate = bollo_rate
+        self.bollo = pd.Series(bollo_rate/252, index=prices.index)
 
     @classmethod
-    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate: float = 0.26):
+    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate: float = 0.26, bollo_rate: float = 0.002):
         """
         Factory method to create a Portfolio and immediately allocate
         capital based on target weights at T=0.
@@ -61,6 +65,7 @@ class Portfolio:
             brokerage_fee_rate=brokerage_fee_rate,
             ter=ter,
             tax_rate=tax_rate,
+            bollo_rate=bollo_rate,
         )
 
         fees = {}
@@ -241,7 +246,10 @@ class Rebalancer:
             threshold (float): Rebalancing trigger threshold (e.g., 0.05 for 5% deviation).
             tax_rate (float, optional): Capital gains tax rate. Defaults to 0.26.
         """
-        self.target_weights = target_weights
+        # La docstring dichiara 'pd.Series or dict': normalizziamo a Series, che e'
+        # l'unico tipo con cui funzionano la sottrazione e l'allineamento per asset.
+        self.target_weights = (target_weights if isinstance(target_weights, pd.Series)
+                               else pd.Series(target_weights))
         self.threshold = threshold
         self.tax_rate = tax_rate
 
@@ -258,12 +266,11 @@ class Rebalancer:
                 prices, and methods for `buy` and `sell` to estimate costs.
 
         Returns:
-            tuple[float, float, dict]: A tuple containing:
-                - total_tax (float): Estimated total capital gains tax payable.
-                - total_cost (float): Estimated total transaction fees/costs.
-                - trade_deltas (dict): Mapping of asset names to monetary value of the trade.
-                    Positive values indicate buys, negative values indicate sells.
-                    Returns zeros for all assets if the threshold is not breached.
+            tuple[dict, dict, dict]: A tuple containing, in this order:
+                - costs (dict): fee per asset, negative (cash out); 0.0 if no rebalance.
+                - taxes (dict): capital gains tax per asset, negative; 0.0 if no rebalance.
+                - trade_deltas (dict): traded value per asset, positive = buy,
+                  negative = sell. All zeros if the threshold is not breached.
         """
 
         delta = self.target_weights - portfolio.weights
@@ -272,10 +279,23 @@ class Rebalancer:
             return {asset: 0.0 for asset in portfolio.assets}, {asset: 0.0 for asset in portfolio.assets}, {asset: 0.0 for asset in portfolio.assets}
 
         V = portfolio.broker_assets_value
+        if not np.isfinite(V) or V <= 0:
+            raise ValueError(
+                "Valore del portafoglio nullo o non finito all'atto del ribilanciamento: "
+                "verificare che ogni asset selezionato abbia un prezzo valido alla data iniziale."
+            )
         V_prime = V
         converged = False
+        iterations = 0
+        max_iterations = 50
 
         while not converged:
+            iterations += 1
+            if iterations > max_iterations:
+                raise RuntimeError(
+                    f"Il ribilanciamento non converge in {max_iterations} iterazioni: "
+                    "prezzi non finiti o portafoglio a valore nullo."
+                )
             with portfolio.simulate_transactions() as temp:
                 trades = {
                     asset: (self.target_weights[asset] * V_prime / temp.prices[asset]) - temp.holdings[asset]
@@ -293,6 +313,11 @@ class Rebalancer:
                         total_cost += fee
 
             new_V_prime = V - total_tax - total_cost
+            if not np.isfinite(new_V_prime):
+                raise ValueError(
+                    "Valore del portafoglio non finito durante il ribilanciamento "
+                    "(prezzi NaN nella finestra selezionata?)."
+                )
             converged = abs(new_V_prime / V_prime - 1) < 1e-8
             V_prime = new_V_prime
 
