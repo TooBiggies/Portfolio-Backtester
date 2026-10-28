@@ -89,6 +89,46 @@ for i, asset in enumerate(assets):
             f"{asset} — {nome} (%)", min_value=0.0, max_value=100.0, step=1.0,
             key=f"w_{asset}", help=f"{nome}: {descrizione}")
 
+# Asset per cui la quota ha senso: solo quelli che possono contenere titoli di Stato.
+# Azionario, oro, liquidita' e managed futures non possono averne, quindi la quota e' 0 per
+# costruzione e non c'e' niente da chiedere all'utente (un campo in piu' sarebbe solo rumore).
+# I Treasury USA sono white list: sui quattro ETF Treasury del dataset la quota e' 100%.
+# Se un domani si aggiunge un ETF obbligazionario aggregate, va messo qui con la sua quota
+# certificata dall'emittente.
+GOV_CAPABLE = {"SHYSIM": 100.0, "IEFSIM": 100.0, "TLTSIM": 100.0, "ZROZSIM": 100.0}
+
+with st.expander("Fiscalità per asset — quota titoli di Stato white list"):
+    st.caption(
+        "Sulla quota di provento riferibile a titoli di Stato white list la base imponibile è "
+        "ridotta al 48,08%: aliquota effettiva 12,5% su quella parte, 26% sul resto. "
+        "I Treasury USA sono white list. La percentuale è quella certificata dall'emittente: "
+        "se il fondo non la pubblica, il broker applica il 26% pieno."
+    )
+    gov_pct = {a: 0.0 for a in assets}
+    obbligazionari = [a for a in assets if a in GOV_CAPABLE]
+    colonne_gov = st.columns(max(1, min(3, len(obbligazionari))))
+    for i, asset in enumerate(obbligazionari):
+        with colonne_gov[i % len(colonne_gov)]:
+            gov_pct[asset] = st.number_input(
+                f"{asset} — quota Stato (%)", min_value=0.0, max_value=100.0,
+                value=float(GOV_CAPABLE[asset]), step=5.0, key=f"g_{asset}",
+                help="Quota di titoli di Stato white list certificata dall'emittente.")
+    altri = [a for a in assets if a not in GOV_CAPABLE]
+    if altri:
+        st.caption("Per gli altri asset la quota non è richiesta: azionario, oro, liquidità e "
+                   "managed futures non possono contenere titoli di Stato, quindi restano al 26%.")
+
+    aliquota_su = tax_pct / 100.0
+    con_quota = [a for a in assets if gov_pct.get(a, 0.0) > 0]
+    if con_quota:
+        dettaglio = " · ".join(
+            f"{a} {((1 - gov_pct[a] / 100.0) * aliquota_su + (gov_pct[a] / 100.0) * 0.125) * 100:.2f}%"
+            for a in con_quota)
+        senza = len(assets) - len(con_quota)
+        st.caption(f"Aliquota effettiva: {dettaglio}" + (f" · gli altri {senza} asset al {aliquota_su*100:.2f}%" if senza else ""))
+    else:
+        st.caption(f"Nessuna quota dichiarata: tutti gli asset al {aliquota_su*100:.2f}%.")
+
 total_weight = sum(weights_pct.values())
 st.metric("Totale allocazione", f"{total_weight:.2f}%")
 
@@ -108,6 +148,7 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
                 brokerage_fee_rate=brokerage_pct / 100.0,
                 rebalance_threshold=rebalance_pct / 100.0,
                 tax_rate=tax_pct / 100.0,
+                gov_share={a: v / 100.0 for a, v in gov_pct.items()},
                 annual_costs_rate=annual_costs_pct / 100.0,
                 plot=False,
                 save_outputs=False,

@@ -4,6 +4,7 @@ import numpy as np
 from contextlib import contextmanager
 
 class Portfolio:
+    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26, gov_share: dict = None, gov_rate: float = 0.125):
     def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26, bollo_rate: float = 0.002):
         """
         Initializes a Portfolio instance with price data and financial settings.
@@ -30,6 +31,11 @@ class Portfolio:
         # Prima era cablata a 0.26 dentro cash_out_costs: il "netto" ignorava
         # l'aliquota configurata nel backtest.
         self.tax_rate = tax_rate
+        # Quota di titoli di Stato white list per asset (0..1), certificata dall'emittente.
+        # Sulla quota sovrana la base imponibile e' ridotta al 48,08% e l'aliquota effettiva
+        # e' 12,5% (art. 2 D.L. 138/2011, D.M. 13/12/2011, circ. 19/E/2014): 0,4808 x 26% = 12,5%.
+        self.gov_share = dict(gov_share or {})
+        self.gov_rate = gov_rate
 
         if ter is None:
             self.ter = pd.Series(0.0, index=prices.index, dtype='float64')
@@ -43,6 +49,7 @@ class Portfolio:
         self.bollo = pd.Series(bollo_rate/252, index=prices.index)
 
     @classmethod
+    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate: float = 0.26, gov_share: dict = None, gov_rate: float = 0.125):
     def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate: float = 0.26, bollo_rate: float = 0.002):
         """
         Factory method to create a Portfolio and immediately allocate
@@ -65,6 +72,8 @@ class Portfolio:
             brokerage_fee_rate=brokerage_fee_rate,
             ter=ter,
             tax_rate=tax_rate,
+            gov_share=gov_share,
+            gov_rate=gov_rate,
             bollo_rate=bollo_rate,
         )
 
@@ -117,6 +126,15 @@ class Portfolio:
         factor = 1.0 - (self.ter + self.bollo)
         self.holdings *= factor
         self.assets_costs *= factor
+
+    def tax_rate_for(self, asset: str) -> float:
+        """Aliquota effettiva dell'asset: 12,5% sulla quota white list, 26% sul resto."""
+        try:
+            quota = float(self.gov_share.get(asset, 0.0) or 0.0)
+        except (TypeError, ValueError):
+            quota = 0.0
+        quota = min(max(quota, 0.0), 1.0)
+        return (1.0 - quota) * float(self.tax_rate) + quota * float(self.gov_rate)
 
     def _pmc(self, asset):
         """
@@ -186,7 +204,7 @@ class Portfolio:
             raise ValueError("Cannot sell more than held")
         units = min(units, self.holdings[asset])
         pmc = self._pmc(asset)
-        rate = self.tax_rate if tax_rate is None else tax_rate
+        rate = self.tax_rate_for(asset) if tax_rate is None else tax_rate
         tax = max(0.0, units * (price - pmc)) * rate
         fee = units * price * self.brokerage_fee_rate
 
@@ -214,11 +232,11 @@ class Portfolio:
     def cash_out_costs(self, tax_rate: float = None):
         "sell everything — returns a Series of exit costs per asset"
 
-        rate = self.tax_rate if tax_rate is None else tax_rate
         costs_per_asset = pd.Series(0., index=self.holdings.index)
         with self.simulate_transactions() as temp:
             for asset in temp.holdings.index:
-                fee, tax = temp.sell(temp.prices[asset], asset, temp.holdings[asset], rate)
+                # tax_rate=None -> aliquota per asset (quota white list)
+                fee, tax = temp.sell(temp.prices[asset], asset, temp.holdings[asset], tax_rate)
                 costs_per_asset[asset] = fee + tax
 
             return costs_per_asset
@@ -305,7 +323,8 @@ class Rebalancer:
                 total_tax, total_cost = 0.0, 0.0
                 for asset, units in trades.items():
                     if units < 0:
-                        fee, tax = temp.sell(temp.prices[asset], asset, -units, self.tax_rate)
+                        # aliquota per asset (quota white list), non un tasso unico
+                        fee, tax = temp.sell(temp.prices[asset], asset, -units)
                         total_tax += tax
                         total_cost += fee
                     elif units > 0:
@@ -328,7 +347,7 @@ class Rebalancer:
         for asset, units in trades.items():
             trade_deltas[asset] = units * portfolio.prices[asset]
             if units < 0:
-                c, t = portfolio.sell(portfolio.prices[asset], asset, -units, self.tax_rate)
+                c, t = portfolio.sell(portfolio.prices[asset], asset, -units)
                 costs[asset] = -c
                 taxes[asset] = -t
             elif units > 0:
