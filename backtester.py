@@ -57,8 +57,9 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     return df_prices, begin_date, end_date
 
 
-def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True, risk_free_rate=0.0, gov_share=None):
-def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True, risk_free_rate=0.0, data_path="./Timeseries.csv"):
+def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0.,
+             rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False,
+             save_outputs=True, risk_free_rate=0.0, data_path="./Timeseries.csv", gov_share=None):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
