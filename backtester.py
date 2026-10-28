@@ -23,20 +23,33 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
         DataFrame with Date as index and assets as columns
     """
 
-    if begin_date is None:
-        begin_date = pd.to_datetime(df.dropna()[date_column].min())
-    if end_date is None:
-        end_date = pd.to_datetime(df.dropna()[date_column].max())
-
     df = df.copy()
     df[date_column] = pd.to_datetime(df[date_column], dayfirst=True, errors="coerce")
+
+    if asset_columns is None:
+        asset_columns = [c for c in df.columns if c != date_column]
+
+    # La finestra di default si calcola sulle date GIA' interpretate e sulle sole righe
+    # in cui TUTTI gli asset selezionati hanno un prezzo: sul formato gg/mm/aaaa il
+    # minimo e il massimo alfabetici non coincidono con quelli cronologici
+    # ("31/01/2020" > "01/02/2020"), e una riga con date valida ma prezzi mancanti
+    # allargherebbe la finestra oltre i dati realmente disponibili (issue #8: la data
+    # iniziale deve essere la meno recente fra quelle in comune a tutti gli asset).
+    righe_complete = df.dropna(subset=asset_columns)
+    if begin_date is None or end_date is None:
+        date_valide = righe_complete[date_column].dropna()
+        if date_valide.empty:
+            # senza questo, un CSV con date illeggibili restituiva un DataFrame vuoto:
+            # indistinguibile da un risultato legittimo.
+            raise ValueError(f"Nessuna data valida nella colonna '{date_column}'")
+        if begin_date is None:
+            begin_date = date_valide.min()
+        if end_date is None:
+            end_date = date_valide.max()
+
     df = df[(df[date_column] >= pd.to_datetime(begin_date))].copy()
     df = df[(df[date_column] <= pd.to_datetime(end_date))].copy()
     df = df.reset_index(drop=True)
-
-    if asset_columns is None:
-        # Auto-detect: exclude Date column
-        asset_columns = [col for col in df.columns if col != date_column]
 
     # Set Date as index
     df_prices = df.set_index(date_column)[asset_columns]
@@ -44,7 +57,7 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     return df_prices, begin_date, end_date
 
 
-def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True, risk_free_rate=0.0):
+def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0., rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False, save_outputs=True, risk_free_rate=0.0, data_path="./Timeseries.csv"):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -90,7 +103,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         end_date = pd.to_datetime(end_date)
 
     asset_columns=list(weights.keys())
-    prices, begin_date, end_date = prepare_price_dataframe(pd.read_csv("./Timeseries.csv", sep=";"), begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
+    prices, begin_date, end_date = prepare_price_dataframe(pd.read_csv(data_path, sep=";"), begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
     # Ogni asset con peso > 0 deve avere un prezzo per tutta la finestra richiesta.
     # Un NaN (asset che parte dopo, o che finisce prima) rende il valore di
     # portafoglio non finito: storicamente il risultato era "capitale finale 0.00".
@@ -170,8 +183,15 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
     # Gli anni vanno calcolati sullo span effettivamente simulato: se la serie
     # parte dopo la data richiesta (o finisce prima), usare le date richieste
-    # sottostima o sovrastima il CAGR.
-    years = round(((dates[-1] - dates[0]).days / 365.25), 2)
+    # sottostima o sovrastima il CAGR. L'arrotondamento va fatto DOPO la divisione:
+    # arrotondare prima manda in ZeroDivisionError ogni finestra sotto ~4 giorni.
+    giorni = (dates[-1] - dates[0]).days
+    if giorni <= 0:
+        raise ValueError("La finestra di simulazione deve coprire almeno un giorno")
+    years = round(giorni / 365.25, 2)
+    if years <= 0:
+        # una finestra di 1-2 giorni si arrotonda a 0,00: servono le frazioni esatte
+        years = giorni / 365.25
 
     print(f"Orizzonte temporale   {dates[0].date()} / {dates[-1].date()}")
     print(
