@@ -174,9 +174,12 @@ def test_data_iniziale_dopo_la_finale_mostra_errore():
     assert at.error and "precedere" in at.error[0].value
 
 
+# La colonna dello Sharpe contiene il tasso privo di rischio usato, che dal #79 non è
+# più zero (è il cash a 3 mesi): il nome esatto della colonna dipende dai dati, quindi
+# si verifica per prefisso invece di cablare un numero che cambia col periodo.
 COLONNE_TABELLA = [
     "Portafoglio", "CAGR", "Valore finale", "Volatilità annua", "Max drawdown",
-    "Sharpe (rf=0.00%)", "Sortino", "Ulcer index", "Calmar",
+    "Sharpe (rf=", "Sortino", "Ulcer index", "Calmar",
 ]
 
 
@@ -214,9 +217,15 @@ def test_la_tabella_ha_tutte_le_metriche_per_ogni_portafoglio():
     at = avvia()
     esegui_con_date_breve(at)
     tabella = tabella_comparativa(at)
-    assert list(tabella.columns) == COLONNE_TABELLA
+    colonne = list(tabella.columns)
+    assert len(colonne) == len(COLONNE_TABELLA)
+    for atteso, reale in zip(COLONNE_TABELLA, colonne):
+        if atteso.endswith("(") or atteso == "Sharpe (rf=":
+            assert reale.startswith(atteso) and reale.endswith("%)"), reale
+        else:
+            assert reale == atteso, (reale, atteso)
     assert len(tabella) == 3
-    for colonna in COLONNE_TABELLA[1:]:
+    for colonna in list(tabella.columns)[1:]:
         for valore in tabella[colonna]:
             assert valore not in ("", "n.d.", None), f"{colonna} vuota: {valore}"
 

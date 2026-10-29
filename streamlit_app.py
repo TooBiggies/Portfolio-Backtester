@@ -204,6 +204,10 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
                 rebalance_threshold=rebalance_pct / 100.0,
                 tax_rate=aliquote,
                 annual_costs_rate=costi_annui,
+                # Sharpe e Sortino con il cash a 3 mesi come tasso privo di rischio
+                # (issue #79). Con rf=0 il rapporto era sovrastimato: nel periodo
+                # 2010-2025 il cash ha reso in media 1,33% l'anno.
+                risk_free_rate="CASHX",
                 plot=False,
                 save_outputs=False,
             )
@@ -237,6 +241,12 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
             "Le tre righe sono le stesse operazioni lette su tre curve di equity: il lordo non "
             "paga nulla, il broker paga commissioni e costi, il netto paga anche le imposte. "
             "La differenza fra le righe è l'effetto di costi e fiscalità, non un calcolo diverso."
+        )
+        st.caption(
+            f"Sharpe e Sortino usano {summary.get('risk_free_rate_source', '0')} come tasso privo di "
+            f"rischio: nel periodo ha reso in media {summary.get('risk_free_rate', 0.0) * 100:.2f}% "
+            "l'anno, giorno per giorno. Con un tasso a zero i due rapporti sarebbero più alti "
+            "e non confrontabili fra periodi con tassi diversi."
         )
 
         chart_cols = [c for c in ["GrossPortfolioValue", "BrokerPortfolioValue", "Net"] if c in df_log.columns]

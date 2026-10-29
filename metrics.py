@@ -88,10 +88,40 @@ def ulcer_index(values: pd.Series):
     return float(((dd ** 2).mean()) ** 0.5)
 
 
-def risk_metrics(values: pd.Series, risk_free_rate: float = 0.0) -> dict:
+def risk_free_daily(risk_free_rate, index, ppy: int = 252) -> pd.Series:
+    """Tasso privo di rischio in forma giornaliera, allineato alle date dei rendimenti.
+
+    Accetta due forme:
+
+    - **scalare annuo** (0.02 = 2%), il comportamento storico: viene diviso per i periodi
+      dell'anno e replicato su ogni data;
+    - **Series di rendimenti giornalieri** già calcolati sulla stessa frequenza del
+      portafoglio (0.0002 = 0,02% al giorno), come quella che si ottiene dalla colonna
+      ``CASHX`` del dataset. Un giorno assente vale 0: il tasso non si trascina avanti.
+
+    Il default è 0, quindi chi non passa niente continua ad avere lo Sharpe a tasso zero.
+    """
+    if risk_free_rate is None:
+        risk_free_rate = 0.0
+    if isinstance(risk_free_rate, pd.Series):
+        return risk_free_rate.astype(float).reindex(index).fillna(0.0)
+    return pd.Series(float(risk_free_rate) / ppy, index=index, dtype="float64")
+
+
+def risk_metrics(values: pd.Series, risk_free_rate=0.0) -> dict:
     """Volatilità, Sharpe, Sortino e max drawdown di una serie di valori.
 
-    ``risk_free_rate`` è annuo (0.02 = 2%).
+    ``risk_free_rate`` è annuo se scalare (0.02 = 2%) oppure una Series di rendimenti
+    giornalieri; vedi ``risk_free_daily``. Con lo scalare i numeri sono identici a
+    quelli prodotti prima che esistesse la forma per serie.
+
+    Due cose sono dichiarate perché ognuna cambia un decimale:
+
+    - ``volatility`` è la volatilità **dei rendimenti del portafoglio**, non quella dei
+      rendimenti in eccesso: è una proprietà della serie, non del confronto col tasso;
+    - ``sharpe`` usa al denominatore la deviazione standard dei **rendimenti in eccesso**
+      (definizione standard). Con un tasso costante le due coincidono, con un tasso che
+      varia differiscono di ~0,002 punti su una volatilità del 9% — misurato, non stimato.
     """
     v = pd.Series(values).astype(float).dropna()
     rets = daily_returns(v)
@@ -112,17 +142,23 @@ def risk_metrics(values: pd.Series, risk_free_rate: float = 0.0) -> dict:
     if len(rets) < 2:
         return out
 
-    vol_daily = float(rets.std(ddof=1))
-    vol_ann = vol_daily * math.sqrt(ppy)
+    vol_ann = float(rets.std(ddof=1)) * math.sqrt(ppy)
     out["volatility"] = vol_ann if vol_ann > 0 else None
 
-    excess_ann = float(rets.mean()) * ppy - risk_free_rate
-    if vol_ann > 0:
-        out["sharpe"] = excess_ann / vol_ann
+    # Rendimento in eccesso periodo per periodo: e' ciò che serve quando il tasso privo
+    # di rischio varia (CASHX). Con un tasso costante coincide con la vecchia formula.
+    rf = risk_free_daily(risk_free_rate, rets.index, ppy)
+    eccesso = pd.Series(rets.to_numpy() - rf.to_numpy(), index=rets.index)
+    out["risk_free_mean"] = float(rf.mean()) * ppy
 
-    target_daily = risk_free_rate / ppy
-    downside = pd.Series(rets - target_daily)
-    downside_dev = float((downside.clip(upper=0.0) ** 2).mean() ** 0.5) * math.sqrt(ppy)
+    excess_ann = float(eccesso.mean()) * ppy
+    vol_eccesso = float(eccesso.std(ddof=1)) * math.sqrt(ppy)
+    if vol_eccesso > 0:
+        out["sharpe"] = excess_ann / vol_eccesso
+
+    # Sortino: stesso tasso come MAR, altrimenti due metriche della stessa tabella
+    # userebbero due definizioni diverse di "eccesso".
+    downside_dev = float((eccesso.clip(upper=0.0) ** 2).mean() ** 0.5) * math.sqrt(ppy)
     if downside_dev > 0:
         out["sortino"] = excess_ann / downside_dev
 
