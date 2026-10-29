@@ -54,40 +54,103 @@ def esegui_backtest(at):
     at.run()
 
 
+def tabella_asset(at):
+    """La tabella per asset si riconosce dall'indice fatto di ticker."""
+    for riquadro in at.dataframe:
+        valore = riquadro.value
+        if getattr(valore, "columns", None) is not None and "Allocazione (%)" in valore.columns:
+            return valore
+    raise AssertionError("tabella per asset non trovata nella pagina")
+
+
+def scrivi_cella(at, asset, colonna, valore):
+    """Modifica una cella come farebbe l'utente, passando dallo stato della sessione."""
+    tabella = at.session_state["tabella_per_asset"].copy()
+    tabella.loc[asset, colonna] = valore
+    at.session_state["tabella_per_asset"] = tabella
+    at.run()
+
+
 def test_l_app_parte_senza_eccezioni():
     at = avvia()
     assert not at.exception, [e.value for e in at.exception]
     assert at.title[0].value == "Portfolio Backtester"
 
 
-def test_ci_sono_i_campi_di_peso_per_ogni_asset():
+def test_la_tabella_ha_una_riga_per_ogni_asset_e_le_quattro_colonne():
     at = avvia()
-    chiavi = {x.key for x in at.number_input if x.key and x.key.startswith("w_")}
-    assert {f"w_{a}" for a in ASSET}.issubset(chiavi)
+    tabella = tabella_asset(at)
+    assert len(tabella) == len([a for a in tabella.index]) >= 11
+    assert list(tabella.columns) == ["Allocazione (%)", "Commissione (%)", "Costi annui (%)", "Aliquota (%)"]
     for asset in ASSET:
-        assert campo_peso(at, asset) is not None
+        assert asset in tabella.index
 
 
-def test_l_allocazione_di_default_somma_a_cento():
+def test_i_default_di_costo_sono_quelli_della_issue_73():
+    """AC1: 0,19% di transazione, 0,2% annui, 26% di fiscalità su tutti; 12,5% sui Treasury."""
     at = avvia()
-    assert metrica(at, "Totale allocazione") == "100.00%"
+    tabella = tabella_asset(at)
+    assert float((tabella["Commissione (%)"] - 0.19).abs().max()) < 1e-9
+    assert float((tabella["Costi annui (%)"] - 0.2).abs().max()) < 1e-9
+    for asset in ("SHYSIM", "IEFSIM", "TLTSIM", "ZROZSIM"):
+        assert abs(float(tabella.loc[asset, "Aliquota (%)"]) - 12.5) < 1e-9, asset
+    for asset in ("VTSIM", "GLDSIM", "KMLMSIM", "DBMFSIM"):
+        assert abs(float(tabella.loc[asset, "Aliquota (%)"]) - 26.0) < 1e-9, asset
+
+
+def test_l_allocazione_di_default_somma_a_cento_ed_e_intera():
+    at = avvia()
+    assert metrica(at, "Totale allocazione") == "100%"
+    allocazione = tabella_asset(at)["Allocazione (%)"]
+    assert (allocazione == allocazione.astype(int)).all(), "le allocazioni hanno decimali"
 
 
 def test_cambiare_un_peso_aggiorna_il_totale():
     at = avvia()
-    campo_peso(at, "VTSIM").set_value(50.0)
+    scrivi_cella(at, "VTSIM", "Allocazione (%)", 50.0)
+    assert metrica(at, "Totale allocazione") == "90%"
+
+
+def test_il_bottone_applica_i_valori_globali_a_tutti():
+    """AC1: i tre campi generali riscrivono tutti gli strumenti in un colpo."""
+    at = avvia()
+    scrivi_cella(at, "ZROZSIM", "Commissione (%)", 0.0)      # personalizzazione
+    campo_per_etichetta(at, "Costi di negoziazione").set_value(0.5)
+    campo_per_etichetta(at, "Costi annui").set_value(0.3)
+    campo_per_etichetta(at, "Aliquota fiscale").set_value(20.0)
     at.run()
-    assert metrica(at, "Totale allocazione") == "90.00%"
+    bottone(at, "Applica i valori globali a tutti gli strumenti").click()
+    at.run()
+    tabella = tabella_asset(at)
+    assert float((tabella["Commissione (%)"] - 0.5).abs().max()) < 1e-9
+    assert float((tabella["Costi annui (%)"] - 0.3).abs().max()) < 1e-9
+    assert float((tabella["Aliquota (%)"] - 20.0).abs().max()) < 1e-9
+
+
+def test_la_tabella_arriva_al_motore_come_parametri_per_asset():
+    """Cambiare l'aliquota di un solo strumento deve cambiare il netto e lasciare
+    intatto il lordo: e' la catena interfaccia -> motore, verificata dall'esterno."""
+    import datetime as dt
+    at = avvia()
+    at.date_input[0].set_value(dt.date(2020, 1, 2))
+    at.date_input[1].set_value(dt.date(2021, 1, 4))
+    at.run()
+    esegui_backtest(at)
+    lordo_prima = metrica(at, "Valore finale lordo")
+    netto_prima = metrica(at, "Valore finale netto")
+
+    scrivi_cella(at, "ZROZSIM", "Aliquota (%)", 26.0)        # da 12,5% a 26%
+    esegui_backtest(at)
+    assert metrica(at, "Valore finale lordo") == lordo_prima
+    assert metrica(at, "Valore finale netto") != netto_prima
 
 
 def test_pesi_che_non_sommano_a_cento_bloccano_il_backtest():
     at = avvia()
-    campo_peso(at, "VTSIM").set_value(50.0)
-    at.run()
+    scrivi_cella(at, "VTSIM", "Allocazione (%)", 40.0)
     esegui_backtest(at)
-    assert at.error, "doveva comparire un errore"
+    assert at.error, "manca l'errore sul totale diverso da 100"
     assert "100" in at.error[0].value
-    assert not [m for m in at.metric if m.label.startswith("Valore finale")]
 
 
 def test_data_iniziale_dopo_la_finale_mostra_errore():

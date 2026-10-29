@@ -59,7 +59,8 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
 
 def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0.,
              rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False,
-             save_outputs=True, risk_free_rate=0.0, data_path="./Timeseries.csv", gov_share=None):
+             save_outputs=True, risk_free_rate=0.0, data_path="./Timeseries.csv", gov_share=None,
+             bollo_rate=None):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -161,9 +162,13 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     # portafoglio a costi zero, e il "lordo" smetterebbe di essere lordo (37.388,49 senza quota
     # contro 36.688,50 con i Treasury al 100%: 700 EUR di imposte nascoste nel benchmark).
     # Il portafoglio ideale non ha parametri fiscali.
+    #
+    # Nota: annual_costs_rate=0 qui azzera TUTTI i costi di detenzione (bollo compreso, che
+    # dal #73 non e' piu' un parametro separato), quindi il "lordo" resta a costo zero senza
+    # dover neutralizzare altro.
     ideal_pf, _ = Portfolio.from_weights(
         prices=initial_prices, value=initial_value,
-        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0., tax_rate=0., gov_share=None, bollo_rate=0.)
+        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0., tax_rate=0., gov_share=None)
     ideal_rebalancer = Rebalancer(
         target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=0.)
 
@@ -171,7 +176,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     real_pf, fees = Portfolio.from_weights(
         prices=initial_prices, value=initial_value,
         weights=weights, brokerage_fee_rate=brokerage_fee_rate,
-        annual_costs_rate=annual_costs_rate, tax_rate=tax_rate, gov_share=gov_share)
+        annual_costs_rate=annual_costs_rate, tax_rate=tax_rate, gov_share=gov_share,
+        bollo_rate=bollo_rate)
     real_rebalancer = Rebalancer(
         target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 

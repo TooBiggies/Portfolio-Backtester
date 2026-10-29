@@ -1,11 +1,31 @@
+import warnings
+
 import pandas as pd
 import numpy as np
 
 from contextlib import contextmanager
 
+
+def per_asset(value, index, default: float = 0.0) -> pd.Series:
+    """Normalizza un parametro in una Series per asset.
+
+    Accetta uno scalare (replicato su tutti gli asset), un dict {asset: valore}
+    o una Series gia' allineata. E' il punto in cui i tre tipi di costo
+    diventano parametri per strumento senza cambiare il resto del motore:
+    assente significa `default`.
+    """
+    if value is None:
+        return pd.Series(default, index=index, dtype='float64')
+    if isinstance(value, pd.Series):
+        return value.reindex(index).fillna(default).astype('float64')
+    if isinstance(value, dict):
+        return pd.Series({asset: float(value.get(asset, default)) for asset in index}, dtype='float64')
+    return pd.Series(float(value), index=index, dtype='float64')
+
+
 class Portfolio:
-    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None,
-                 tax_rate: float = 0.26, bollo_rate: float = 0.002,
+    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate=None, ter: pd.Series = None,
+                 tax_rate: float = 0.26, bollo_rate: float = None,
                  gov_share: dict = None, gov_rate: float = 0.125):
         """
         Initializes a Portfolio instance with price data and financial settings.
@@ -13,8 +33,9 @@ class Portfolio:
         Args:
             prices (pd.Series): A pandas Series containing asset prices indexed by time.
             initial_value (float): The starting capital amount of the portfolio. Defaults to 1.
-            brokerage_fee_rate (float): The rate charged for brokerage transactions (e.g., 0.001 for 0.1%). Defaults to 0.
-            annual_costs_rate (float): The rate charged for annual holding costs. Defaults to 0.
+            brokerage_fee_rate: commissione per transazione. Scalare, dict {asset: tasso}
+                o Series per asset. 0.001 = 0,1%.
+            ter (pd.Series): costi annui di detenzione per asset (gia' divisi per 252).
 
         Attributes:
             prices: The source of asset prices.
@@ -26,32 +47,48 @@ class Portfolio:
         self.holdings = pd.Series(0.0, index=prices.index)
         self.assets_costs = pd.Series(0.0, index=prices.index)  # For PMC
 
-        self.brokerage_fee_rate = brokerage_fee_rate
+        self.brokerage_fee_rate = per_asset(brokerage_fee_rate, prices.index)
         self.initial_value = initial_value
         # Aliquota per l'imposta di uscita (net_assets_value / cash_out_costs).
-        # Prima era cablata a 0.26 dentro cash_out_costs: il "netto" ignorava
-        # l'aliquota configurata nel backtest.
-        self.tax_rate = tax_rate
+        # Due forme, una sola verita' alla volta:
+        # - dict/Series: aliquota esplicita per asset, ed e' quella che vale;
+        # - scalare: si deriva dalla quota di titoli di Stato white list (vedi sotto).
+        self.tax_rates = (per_asset(tax_rate, prices.index, default=0.26)
+                          if isinstance(tax_rate, (dict, pd.Series)) else None)
+        self.tax_rate = float(tax_rate) if self.tax_rates is None else 0.26
         # Quota di titoli di Stato white list per asset (0..1), certificata dall'emittente.
         # Sulla quota sovrana la base imponibile e' ridotta al 48,08% e l'aliquota effettiva
         # e' 12,5% (art. 2 D.L. 138/2011, D.M. 13/12/2011, circ. 19/E/2014): 0,4808 x 26% = 12,5%.
+        # Usata solo quando l'aliquota non e' esplicita per asset.
         self.gov_share = dict(gov_share or {})
         self.gov_rate = gov_rate
 
         if ter is None:
             self.ter = pd.Series(0.0, index=prices.index, dtype='float64')
         else:
-            self.ter = ter.reindex(prices.index, fill_value=0.0)
+            self.ter = per_asset(ter, prices.index)
 
-        # Imposta di bollo annua sul controvalore, applicata pro-quota sui giorni di
-        # contrattazione. Parametro esplicito: il portafoglio ideale ("lordo") deve
-        # poter avere bollo 0, altrimenti anche il benchmark paga lo 0,20%.
-        self.bollo_rate = bollo_rate
-        self.bollo = pd.Series(bollo_rate/252, index=prices.index)
+        # L'imposta di bollo non e' piu' un parametro separato: e' un costo annuo di
+        # detenzione, e vive dentro `ter` (default 0,2% nell'interfaccia). Tenerla
+        # separata la faceva contare due volte quando l'utente scriveva 0,2% in
+        # "costi annuali" (#73).
+        #
+        # `bollo_rate` resta accettato per retrocompatibilita' (le chiamate scritte
+        # prima del #73 continuano a funzionare e a dare gli stessi numeri), ma e'
+        # deprecato: viene sommato ai costi annui. Chi non lo passa non paga nulla, cosi'
+        # il bollo non si conta due volte quando e' gia' nel campo dei costi annui.
+        if bollo_rate is not None:
+            warnings.warn(
+                "bollo_rate e' deprecato: l'imposta di bollo e' un costo annuo di detenzione, "
+                "va inclusa in annual_costs_rate (0,002 = 0,2%). Il valore passato viene "
+                "comunque applicato, sommato ai costi annui.",
+                DeprecationWarning, stacklevel=2)
+            if float(bollo_rate):
+                self.ter = self.ter + float(bollo_rate) / 252
 
     @classmethod
     def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate,
-                     tax_rate: float = 0.26, bollo_rate: float = 0.002,
+                     tax_rate: float = 0.26, bollo_rate: float = None,
                      gov_share: dict = None, gov_rate: float = 0.125):
         """
         Factory method to create a Portfolio and immediately allocate
@@ -61,13 +98,13 @@ class Portfolio:
             prices (pd.Series): Prices of assets at T=0.
             value (float): Total starting capital.
             weights (dict): Target allocation weights {asset: weight}.
-            brokerage_fee_rate (float): Fee rate for transactions.
+            brokerage_fee_rate: commissione per transazione (scalare o per asset).
 
         Returns:
             Portfolio: An initialized Portfolio instance with holdings.
         """
         # 1. Instantiate the empty portfolio
-        ter = pd.Series(annual_costs_rate / 252, index=prices.index)
+        ter = per_asset(annual_costs_rate, prices.index) / 252
         portfolio = cls(
             prices=prices,
             initial_value=value,
@@ -86,7 +123,8 @@ class Portfolio:
             if asset in portfolio.assets and weight > 0:
                 price = prices[asset]
                 if price > 0:
-                    units = (value * weight) / (price * (1 + brokerage_fee_rate))
+                    fee_rate = float(portfolio.brokerage_fee_rate[asset])
+                    units = (value * weight) / (price * (1 + fee_rate))
                     # Execute the buy order internally
                     fees[asset] = -portfolio.buy(price, asset, units)
 
@@ -102,7 +140,8 @@ class Portfolio:
 
     @property
     def daily_annual_costs(self):
-        return self.broker_assets_values * (self.ter + self.bollo)
+        # `ter` contiene gia' tutto il costo annuo di detenzione, bollo compreso.
+        return self.broker_assets_values * self.ter
 
     @property
     def broker_assets_values(self):
@@ -125,12 +164,19 @@ class Portfolio:
         return self.broker_assets_values / self.broker_assets_value if self.broker_assets_value > 0 else pd.Series(0.0, index=self.holdings.index)
 
     def apply_holding_costs(self) -> None:
-        factor = 1.0 - (self.ter + self.bollo)
+        factor = 1.0 - self.ter
         self.holdings *= factor
         self.assets_costs *= factor
 
     def tax_rate_for(self, asset: str) -> float:
-        """Aliquota effettiva dell'asset: 12,5% sulla quota white list, 26% sul resto."""
+        """Aliquota effettiva dell'asset.
+
+        Se l'aliquota e' stata data per asset (dict/Series) quella vince: e' l'unica
+        verita' e nessuna formula puo' contraddirla. Altrimenti si deriva dalla quota
+        di titoli di Stato white list: 12,5% sulla quota sovrana, 26% sul resto.
+        """
+        if self.tax_rates is not None:
+            return float(self.tax_rates.get(asset, 0.26))
         try:
             quota = float(self.gov_share.get(asset, 0.0) or 0.0)
         except (TypeError, ValueError):
@@ -177,7 +223,7 @@ class Portfolio:
             - Updates asset cost basis (assets_costs).
         """
         cost_basis = units * price
-        fee = units * price * self.brokerage_fee_rate
+        fee = units * price * float(self.brokerage_fee_rate[asset])
 
         self.holdings[asset] += units
         self.assets_costs[asset] += cost_basis
@@ -208,7 +254,7 @@ class Portfolio:
         pmc = self._pmc(asset)
         rate = self.tax_rate_for(asset) if tax_rate is None else tax_rate
         tax = max(0.0, units * (price - pmc)) * rate
-        fee = units * price * self.brokerage_fee_rate
+        fee = units * price * float(self.brokerage_fee_rate[asset])
 
         self.holdings[asset] -= units
         self.assets_costs[asset] -= units * pmc

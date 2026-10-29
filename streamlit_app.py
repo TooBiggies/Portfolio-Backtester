@@ -36,10 +36,49 @@ PRESET = {
 }
 
 
-def carica_preset(nome, asset_disponibili):
-    """Imposta i pesi del preset nella sessione; gira PRIMA che i widget esistano."""
-    for asset in asset_disponibili:
-        st.session_state[f"w_{asset}"] = float(PRESET[nome].get(asset, 0.0))
+# Aliquote di partenza per strumento: 12,5% sui titoli di Stato white list (base ridotta al
+# 48,08%: 0,4808 x 26% = 12,5%), 26% su tutto il resto. E' un DEFAULT modificabile in tabella,
+# non una regola cablata nel motore: quello che l'utente vede e' quello che viene applicato.
+STRUMENTI_SOVRANI = {"SHYSIM", "IEFSIM", "TLTSIM", "ZROZSIM"}
+ALIQUOTA_SOVRANA = 12.5
+
+CHIAVE_TABELLA = "tabella_per_asset"
+
+
+def carica_preset(nome):
+    """Imposta le allocazioni del preset; gira PRIMA che la tabella esista (on_click)."""
+    if CHIAVE_TABELLA not in st.session_state:
+        return
+    tabella = st.session_state[CHIAVE_TABELLA].copy()
+    tabella["Allocazione (%)"] = [int(PRESET[nome].get(asset, 0.0)) for asset in tabella.index]
+    st.session_state[CHIAVE_TABELLA] = tabella
+
+
+def applica_colonna(colonna, chiave_campo):
+    """Il campo generale riscrive la propria colonna su tutti gli strumenti (AC1).
+
+    Un callback per colonna, non uno per tutti e tre: cambiare la commissione non deve
+    azzerare l'aliquota che l'utente ha appena impostato a mano su un singolo strumento.
+    """
+    def _callback():
+        tabella = st.session_state.get(CHIAVE_TABELLA)
+        if tabella is None:
+            return
+        tabella = tabella.copy()
+        tabella[colonna] = float(st.session_state[chiave_campo])
+        st.session_state[CHIAVE_TABELLA] = tabella
+    return _callback
+
+
+def applica_valori_globali():
+    """Porta i tre campi generali su tutti gli strumenti (AC1: modifica massiva)."""
+    if CHIAVE_TABELLA not in st.session_state:
+        return
+    tabella = st.session_state[CHIAVE_TABELLA].copy()
+    tabella["Commissione (%)"] = float(st.session_state["glob_comm"])
+    tabella["Costi annui (%)"] = float(st.session_state["glob_costi"])
+    tabella["Aliquota (%)"] = float(st.session_state["glob_aliquota"])
+    st.session_state[CHIAVE_TABELLA] = tabella
 
 
 DATA_FILE = Path(__file__).with_name("Timeseries.csv")
@@ -62,10 +101,26 @@ with st.sidebar:
     initial_value = st.number_input("Capitale iniziale (€)", min_value=100.0, value=10_000.0, step=1_000.0)
     begin_date = st.date_input("Data iniziale", value=max(min_date, pd.Timestamp("2010-01-02").date()), min_value=min_date, max_value=max_date)
     end_date = st.date_input("Data finale", value=min(max_date, pd.Timestamp("2025-09-01").date()), min_value=min_date, max_value=max_date)
-    brokerage_pct = st.number_input("Costi di negoziazione (%)", min_value=0.0, max_value=10.0, value=0.29, step=0.01)
-    annual_costs_pct = st.number_input("Costi annui (%)", min_value=0.0, max_value=10.0, value=0.0, step=0.01)
-    tax_pct = st.number_input("Aliquota fiscale (%)", min_value=0.0, max_value=100.0, value=26.0, step=0.5)
+    brokerage_pct = st.number_input(
+        "Costi di negoziazione (%)", min_value=0.0, max_value=10.0, value=0.19, step=0.01,
+        key="glob_comm", on_change=applica_colonna("Commissione (%)", "glob_comm"),
+        help="Commissione del broker, per operazione. 0,19% è quella di Fineco. "
+             "Cambiandola si applica a tutti gli strumenti.")
+    annual_costs_pct = st.number_input(
+        "Costi annui (%)", min_value=0.0, max_value=10.0, value=0.2, step=0.01,
+        key="glob_costi", on_change=applica_colonna("Costi annui (%)", "glob_costi"),
+        help="Tutto il costo annuo di detenzione: imposta di bollo (0,20%) ed eventuali costi "
+             "di piattaforma. Il TER degli ETF è già dentro le serie dei prezzi.")
+    tax_pct = st.number_input(
+        "Aliquota fiscale (%)", min_value=0.0, max_value=100.0, value=26.0, step=0.1,
+        key="glob_aliquota", on_change=applica_colonna("Aliquota (%)", "glob_aliquota"),
+        help="26% sui guadagni ordinari, 12,5% sui titoli di Stato white list. Il valore "
+             "precompilato per ogni strumento si può cambiare nella tabella.")
     rebalance_pct = st.number_input("Soglia di ribilanciamento (%)", min_value=0.1, max_value=100.0, value=10.0, step=0.5)
+    st.button("Applica i valori globali a tutti gli strumenti", on_click=applica_valori_globali,
+              width="stretch",
+              help="Sovrascrive commissione, costi annui e aliquota di ogni riga con i tre "
+                   "valori qui sopra. Le modifiche fatte a mano nella tabella vanno perse.")
 
 st.subheader("Asset allocation")
 
@@ -75,81 +130,80 @@ st.button("Carica il portafoglio predefinito", on_click=carica_preset,
           args=(scelta_preset, assets), width="stretch")
 defaults = {"VTSIM": 60.0, "GLDSIM": 10.0, "ZROZSIM": 25.0, "DBMFSIM": 5.0}
 
-# Il valore iniziale vive SOLO in session_state: passare anche value= al widget farebbe
-# convivere due sorgenti di verita' (Streamlit avverte: "created with a default value but
-# also had its value set via the Session State API"). Cosi' i preset possono sovrascriverlo.
-for _asset in assets:
-    st.session_state.setdefault(f"w_{_asset}", float(defaults.get(_asset, 0.0)))
-cols = st.columns(3)
-weights_pct = {}
-for i, asset in enumerate(assets):
-    with cols[i % 3]:
-        nome, descrizione = ASSET_INFO.get(asset, (asset, "Strumento del dataset."))
-        weights_pct[asset] = st.number_input(
-            f"{asset} — {nome} (%)", min_value=0.0, max_value=100.0, step=1.0,
-            key=f"w_{asset}", help=f"{nome}: {descrizione}")
+# Una sola tabella per strumento: allocazione e i tre costi (#73). I valori iniziali
+# vengono dai campi generali della barra laterale, tranne l'aliquota dei Treasury che parte
+# dal 12,5% di legge. La tabella vive in session_state perché i preset e il bottone
+# "applica a tutti" la riscrivono prima che il widget esista.
+if CHIAVE_TABELLA not in st.session_state:
+    st.session_state[CHIAVE_TABELLA] = pd.DataFrame(
+        {
+            "Strumento": assets,
+            "Allocazione (%)": [float(defaults.get(asset, 0.0)) for asset in assets],
+            "Commissione (%)": [float(brokerage_pct)] * len(assets),
+            "Costi annui (%)": [float(annual_costs_pct)] * len(assets),
+            "Aliquota (%)": [ALIQUOTA_SOVRANA if asset in STRUMENTI_SOVRANI else float(tax_pct)
+                             for asset in assets],
+        }
+    ).set_index("Strumento")
 
-# Asset per cui la quota ha senso: solo quelli che possono contenere titoli di Stato.
-# Azionario, oro, liquidita' e managed futures non possono averne, quindi la quota e' 0 per
-# costruzione e non c'e' niente da chiedere all'utente (un campo in piu' sarebbe solo rumore).
-# I Treasury USA sono white list: sui quattro ETF Treasury del dataset la quota e' 100%.
-# Se un domani si aggiunge un ETF obbligazionario aggregate, va messo qui con la sua quota
-# certificata dall'emittente.
-GOV_CAPABLE = {"SHYSIM": 100.0, "IEFSIM": 100.0, "TLTSIM": 100.0, "ZROZSIM": 100.0}
+# Nessuna `key` sul widget: il valore vive in `CHIAVE_TABELLA`, che i callback riscrivono
+# prima che l'editor esista. Passare insieme `data=` e `key=` fa scattare il controllo di
+# Streamlit sulle due sorgenti di verita' (StreamlitAPIException).
+tabella = st.data_editor(
+    st.session_state[CHIAVE_TABELLA],
+    width="stretch",
+    num_rows="fixed",
+    column_config={
+        "Allocazione (%)": st.column_config.NumberColumn(
+            "Allocazione (%)", min_value=0, max_value=100, step=1, format="%d",
+            help="Peso nel portafoglio. Percentuale intera: i mezzi punti sono rumore."),
+        "Commissione (%)": st.column_config.NumberColumn(
+            "Commissione (%)", min_value=0.0, max_value=10.0, step=0.01, format="%.2f",
+            help="Commissione del broker per operazione su questo strumento."),
+        "Costi annui (%)": st.column_config.NumberColumn(
+            "Costi annui (%)", min_value=0.0, max_value=10.0, step=0.01, format="%.2f",
+            help="Costo di detenzione annuo: bollo e piattaforma. Il TER è già nelle serie."),
+        "Aliquota (%)": st.column_config.NumberColumn(
+            "Aliquota (%)", min_value=0.0, max_value=100.0, step=0.1, format="%.1f",
+            help="12,5% sui titoli di Stato white list, 26% sul resto."),
+    },
+)
+st.session_state[CHIAVE_TABELLA] = tabella
 
-with st.expander("Fiscalità per asset — quota titoli di Stato white list"):
-    st.caption(
-        "Sulla quota di provento riferibile a titoli di Stato white list la base imponibile è "
-        "ridotta al 48,08%: aliquota effettiva 12,5% su quella parte, 26% sul resto. "
-        "I Treasury USA sono white list. La percentuale è quella certificata dall'emittente: "
-        "se il fondo non la pubblica, il broker applica il 26% pieno."
-    )
-    gov_pct = {a: 0.0 for a in assets}
-    obbligazionari = [a for a in assets if a in GOV_CAPABLE]
-    colonne_gov = st.columns(max(1, min(3, len(obbligazionari))))
-    for i, asset in enumerate(obbligazionari):
-        with colonne_gov[i % len(colonne_gov)]:
-            gov_pct[asset] = st.number_input(
-                f"{asset} — quota Stato (%)", min_value=0.0, max_value=100.0,
-                value=float(GOV_CAPABLE[asset]), step=5.0, key=f"g_{asset}",
-                help="Quota di titoli di Stato white list certificata dall'emittente.")
-    altri = [a for a in assets if a not in GOV_CAPABLE]
-    if altri:
-        st.caption("Per gli altri asset la quota non è richiesta: azionario, oro, liquidità e "
-                   "managed futures non possono contenere titoli di Stato, quindi restano al 26%.")
+allocazione = tabella["Allocazione (%)"].astype(float)
+total_weight = float(allocazione.sum())
+attivi = {asset: peso for asset, peso in allocazione.items() if peso > 0}
+if not attivi:
+    st.warning("Nessuno strumento con allocazione maggiore di zero: il backtest non ha niente da simulare.")
 
-    aliquota_su = tax_pct / 100.0
-    con_quota = [a for a in assets if gov_pct.get(a, 0.0) > 0]
-    if con_quota:
-        dettaglio = " · ".join(
-            f"{a} {((1 - gov_pct[a] / 100.0) * aliquota_su + (gov_pct[a] / 100.0) * 0.125) * 100:.2f}%"
-            for a in con_quota)
-        senza = len(assets) - len(con_quota)
-        st.caption(f"Aliquota effettiva: {dettaglio}" + (f" · gli altri {senza} asset al {aliquota_su*100:.2f}%" if senza else ""))
-    else:
-        st.caption(f"Nessuna quota dichiarata: tutti gli asset al {aliquota_su*100:.2f}%.")
-
-total_weight = sum(weights_pct.values())
-st.metric("Totale allocazione", f"{total_weight:.2f}%")
+st.metric("Totale allocazione", f"{total_weight:.0f}%")
+if attivi and total_weight != 100:
+    st.warning(f"L'allocazione somma a {total_weight:.0f}% e non a 100%: correggila prima di eseguire.")
 
 if st.button("Esegui backtest", type="primary", width="stretch"):
     if begin_date >= end_date:
         st.error("La data iniziale deve precedere la data finale.")
-    elif abs(total_weight - 100.0) > 0.01:
-        st.error(f"L'allocazione deve sommare a 100%. Totale attuale: {total_weight:.2f}%.")
+    elif total_weight != 100:
+        st.error(f"L'allocazione deve sommare a 100%. Totale attuale: {total_weight:.0f}%.")
+    elif not attivi:
+        st.error("Nessuno strumento con allocazione maggiore di zero.")
     else:
-        weights = {asset: value / 100.0 for asset, value in weights_pct.items()}
+        # Solo gli strumenti con peso > 0 entrano nella simulazione, ognuno con i propri
+        # costi e la propria aliquota (#73, AC3).
+        weights = {asset: peso / 100.0 for asset, peso in attivi.items()}
+        commissioni = {asset: float(tabella.loc[asset, "Commissione (%)"]) / 100.0 for asset in attivi}
+        costi_annui = {asset: float(tabella.loc[asset, "Costi annui (%)"]) / 100.0 for asset in attivi}
+        aliquote = {asset: float(tabella.loc[asset, "Aliquota (%)"]) / 100.0 for asset in attivi}
         with st.spinner("Esecuzione del backtest..."):
             df_log, df_delta, summary = backtest(
                 initial_value=initial_value,
                 weights=weights,
                 begin_date=pd.Timestamp(begin_date),
                 end_date=pd.Timestamp(end_date),
-                brokerage_fee_rate=brokerage_pct / 100.0,
+                brokerage_fee_rate=commissioni,
                 rebalance_threshold=rebalance_pct / 100.0,
-                tax_rate=tax_pct / 100.0,
-                gov_share={a: v / 100.0 for a, v in gov_pct.items()},
-                annual_costs_rate=annual_costs_pct / 100.0,
+                tax_rate=aliquote,
+                annual_costs_rate=costi_annui,
                 plot=False,
                 save_outputs=False,
             )
