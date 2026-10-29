@@ -57,6 +57,29 @@ def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=No
     return df_prices, begin_date, end_date
 
 
+def serie_da_dataset(df, colonna, dates, date_column="Date"):
+    """Estrae una colonna del dataset allineata alle date della simulazione.
+
+    Serve al tasso privo di rischio (``CASHX``): quella colonna non fa parte del
+    portafoglio, quindi non passa da ``prepare_price_dataframe``, ma deve esistere per
+    tutte le date simulate. Se manca una data si solleva un errore invece di riempirla
+    con zero: un tasso che sparisce per un mese abbasserebbe lo Sharpe senza dirlo.
+    """
+    nome = colonna.upper()
+    if nome not in df.columns:
+        disponibili = sorted(c for c in df.columns if c != date_column)
+        raise ValueError(f"Colonna {nome!r} assente dal dataset. Disponibili: {disponibili}")
+    serie = df.copy()
+    serie[date_column] = pd.to_datetime(serie[date_column], dayfirst=True, errors="coerce")
+    serie = serie.dropna(subset=[date_column]).set_index(date_column)[nome].astype(float).sort_index()
+    mancanti = int(serie.reindex(dates).isna().sum())
+    if mancanti:
+        raise ValueError(
+            f"La colonna {nome!r} non copre la finestra simulata: {mancanti} date senza valore "
+            f"(la serie va dal {serie.index.min().date()} al {serie.index.max().date()}).")
+    return serie.reindex(dates)
+
+
 def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0.,
              rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False,
              save_outputs=True, risk_free_rate=0.0, data_path="./Timeseries.csv", gov_share=None,
@@ -131,7 +154,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         end_date = pd.to_datetime(end_date)
 
     asset_columns=list(weights.keys())
-    prices, begin_date, end_date = prepare_price_dataframe(pd.read_csv(data_path, sep=";"), begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
+    dati = pd.read_csv(data_path, sep=";")
+    prices, begin_date, end_date = prepare_price_dataframe(dati, begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
     # Ogni asset con peso > 0 deve avere un prezzo per tutta la finestra richiesta.
     # Un NaN (asset che parte dopo, o che finisce prima) rende il valore di
     # portafoglio non finito: storicamente il risultato era "capitale finale 0.00".
@@ -152,6 +176,18 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
     dates = prices.index
     initial_prices = prices.iloc[0]
+
+    # Tasso privo di rischio: uno scalare annuo (comportamento storico) oppure il nome di
+    # una colonna del dataset, tipicamente "CASHX" (cash 3 mesi). Nel secondo caso si usa
+    # il rendimento giornaliero della colonna, quindi il tasso varia nel tempo come varia
+    # il mercato monetario: con rf=0 lo Sharpe degli ultimi anni era sovrastimato.
+    if isinstance(risk_free_rate, str):
+        origine_rf = risk_free_rate.upper()
+        prezzi_rf = serie_da_dataset(dati, origine_rf, dates)
+        serie_rf = prezzi_rf.pct_change().fillna(0.0)
+    else:
+        origine_rf = "costante" if risk_free_rate else "0"
+        serie_rf = risk_free_rate
 
     # Initialize tracker
     tracker = PortfolioTracker(asset_columns=asset_columns, begin_date=begin_date)
@@ -210,7 +246,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     serie = {"broker": "BrokerPortfolioValue", "net": "Net"}
     if "GrossPortfolioValue" in df_log.columns:
         serie["gross"] = "GrossPortfolioValue"
-    risk = {nome: risk_metrics(df_log[col], risk_free_rate=risk_free_rate)
+    risk = {nome: risk_metrics(df_log[col], risk_free_rate=serie_rf)
             for nome, col in serie.items()}
 
     if save_outputs:
@@ -256,7 +292,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     print(f"Max drawdown (netto)      {_p(m['max_drawdown'])}")
     if m["peak_date"] is not None:
         print(f"  da {m['peak_date'].date()} a {m['trough_date'].date()}  ({m['amount']:.2f} EUR)")
-    print(f"Sharpe  (netto, rf {risk_free_rate * 100:.2f}%)  {_r(m['sharpe'])}")
+    _rf_medio = m.get("risk_free_mean") or 0.0
+    print(f"Sharpe  (netto, rf {origine_rf} {_rf_medio * 100:.2f}%)  {_r(m['sharpe'])}")
     print(f"Sortino (netto)           {_r(m['sortino'])}")
     print(f"Ulcer index (netto)       {_p(m['ulcer_index'])}")
     print(f"Calmar (netto)            {_r(m['calmar'])}")
@@ -291,7 +328,11 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         "final_broker": real_pf.broker_assets_value,
         "final_net": real_pf.net_assets_value,
         "risk_metrics": risk,
-        "risk_free_rate": risk_free_rate,
+        # Tasso effettivamente usato, annualizzato: con uno scalare e' lo scalare stesso
+        # (come prima), con una serie e' la sua media. E' il numero che finisce
+        # nell'intestazione della tabella, quindi deve essere un float in ogni caso.
+        "risk_free_rate": float((risk["net"] or {}).get("risk_free_mean") or 0.0),
+        "risk_free_rate_source": origine_rf,
     }
     return df_log, df_log_delta, summary
 
