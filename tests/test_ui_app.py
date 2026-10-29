@@ -127,6 +127,17 @@ def test_il_bottone_applica_i_valori_globali_a_tutti():
     assert float((tabella["Aliquota (%)"] - 20.0).abs().max()) < 1e-9
 
 
+def valore_finale(at, portafoglio):
+    """Il valore finale si legge dalla tabella comparativa (#76), non piu' dalle card:
+    quelle sono state sostituite, e questo test le cercava ancora."""
+    for riquadro in at.dataframe:
+        tabella = riquadro.value
+        if getattr(tabella, "columns", None) is not None and "Portafoglio" in tabella.columns:
+            riga = tabella[tabella["Portafoglio"] == portafoglio]
+            return str(riga["Valore finale"].iloc[0])
+    raise AssertionError("tabella comparativa non trovata")
+
+
 def test_la_tabella_arriva_al_motore_come_parametri_per_asset():
     """Cambiare l'aliquota di un solo strumento deve cambiare il netto e lasciare
     intatto il lordo: e' la catena interfaccia -> motore, verificata dall'esterno."""
@@ -136,13 +147,13 @@ def test_la_tabella_arriva_al_motore_come_parametri_per_asset():
     at.date_input[1].set_value(dt.date(2021, 1, 4))
     at.run()
     esegui_backtest(at)
-    lordo_prima = metrica(at, "Valore finale lordo")
-    netto_prima = metrica(at, "Valore finale netto")
+    lordo_prima = valore_finale(at, "Lordo")
+    netto_prima = valore_finale(at, "Netto")
 
     scrivi_cella(at, "ZROZSIM", "Aliquota (%)", 26.0)        # da 12,5% a 26%
     esegui_backtest(at)
-    assert metrica(at, "Valore finale lordo") == lordo_prima
-    assert metrica(at, "Valore finale netto") != netto_prima
+    assert valore_finale(at, "Lordo") == lordo_prima
+    assert valore_finale(at, "Netto") != netto_prima
 
 
 def test_pesi_che_non_sommano_a_cento_bloccano_il_backtest():
