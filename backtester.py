@@ -292,7 +292,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     print(f"Max drawdown (netto)      {_p(m['max_drawdown'])}")
     if m["peak_date"] is not None:
         print(f"  da {m['peak_date'].date()} a {m['trough_date'].date()}  ({m['amount']:.2f} EUR)")
-    print(f"Sharpe  (netto, rf {origine_rf} {m['risk_free_mean'] * 100:.2f}%)  {_r(m['sharpe'])}")
+    _rf_medio = m.get("risk_free_mean") or 0.0
+    print(f"Sharpe  (netto, rf {origine_rf} {_rf_medio * 100:.2f}%)  {_r(m['sharpe'])}")
     print(f"Sortino (netto)           {_r(m['sortino'])}")
     print(f"Ulcer index (netto)       {_p(m['ulcer_index'])}")
     print(f"Calmar (netto)            {_r(m['calmar'])}")

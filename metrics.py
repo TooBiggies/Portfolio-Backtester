@@ -128,12 +128,19 @@ def risk_metrics(values: pd.Series, risk_free_rate=0.0) -> dict:
     ppy = periods_per_year(v.index)
     dd = max_drawdown(v)
 
+    # Il tasso privo di rischio si calcola prima dell'uscita anticipata: cosi'
+    # `risk_free_mean` esiste sempre, anche su una serie troppo corta per calcolare le
+    # metriche. Senza questo, una finestra di due giorni faceva fallire la stampa del
+    # motore con KeyError invece di riportare "n.d." (trovato da un test sull'output).
+    rf = risk_free_daily(risk_free_rate, rets.index, ppy)
+
     out = {
         "periods_per_year": ppy,
         "observations": int(len(rets)),
         "volatility": None,
         "sharpe": None,
         "sortino": None,
+        "risk_free_mean": float(rf.mean()) * ppy if len(rf) else 0.0,
         "ulcer_index": ulcer_index(v),
         "calmar": None,
         **{k: dd[k] for k in ("max_drawdown", "peak_date", "trough_date",
@@ -147,9 +154,7 @@ def risk_metrics(values: pd.Series, risk_free_rate=0.0) -> dict:
 
     # Rendimento in eccesso periodo per periodo: e' ciò che serve quando il tasso privo
     # di rischio varia (CASHX). Con un tasso costante coincide con la vecchia formula.
-    rf = risk_free_daily(risk_free_rate, rets.index, ppy)
     eccesso = pd.Series(rets.to_numpy() - rf.to_numpy(), index=rets.index)
-    out["risk_free_mean"] = float(rf.mean()) * ppy
 
     excess_ann = float(eccesso.mean()) * ppy
     vol_eccesso = float(eccesso.std(ddof=1)) * math.sqrt(ppy)
