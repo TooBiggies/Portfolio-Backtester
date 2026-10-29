@@ -46,12 +46,6 @@ def test_i_costi_di_detenzione_sono_proporzionali_al_valore_di_ogni_asset():
         f"coefficiente diverso fra asset: {coefficienti}")
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "Su develop il bollo e' un parametro separato con default 0,20%: scrivere 0,2% nei "
-    "costi annui fa pagare 0,4% (0,1% sui costi + 0,1% sul bollo), cioe' il doppio. "
-    "Questo caso diventa verde con la #77, che porta il bollo dentro i costi annui. "
-    "Lasciato come xfail non-strict: su develop documenta il difetto, dopo il merge passa "
-    "senza rumore."))
 def test_i_costi_di_detenzione_corrispondono_al_tasso_scritto_dall_utente():
     """Quello che l'utente scrive deve essere quello che paga: 0,2% annuo = 0,2%/252 al giorno."""
     df, _, _ = esegui(brokerage_fee_rate=0.0, annual_costs_rate=0.002, tax_rate=0.0)
