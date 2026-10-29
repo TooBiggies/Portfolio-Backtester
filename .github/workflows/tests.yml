@@ -34,11 +34,17 @@ jobs:
           cache: pip
 
       - name: Installa le dipendenze
-        # Si installano i pacchetti e non il progetto: requirements.txt contiene
-        # l'intero stack Streamlit, inutile per i test (e lento da risolvere).
+        # Si installano i pacchetti e non il progetto: requirements.txt contiene anche
+        # roba che ai test non serve.
+        #
+        # Streamlit PERO' serve: `tests/test_ui_app.py` lo importa e senza di lui quei
+        # casi vengono SALTATI (`importorskip`), non falliti. Cosi' il 28/10 la CI e'
+        # rimasta verde su develop mentre in locale un test di interfaccia era rosso:
+        # #76 ha sostituito le card delle metriche con una tabella e il test aggiunto
+        # da #77 cercava ancora quelle card. Un test saltato non protegge niente.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "pandas>=3.0.3" "numpy>=2.4.6" "matplotlib>=3.10.9" "openpyxl>=3.1.5" "pytest>=8"
+          python -m pip install "pandas>=3.0.3" "numpy>=2.4.6" "matplotlib>=3.10.9" "openpyxl>=3.1.5" "pytest>=8" "streamlit>=1.66.1"
 
       - name: Versione effettiva
         run: python -c "import sys, pandas, numpy; print(sys.version); print('pandas', pandas.__version__, '| numpy', numpy.__version__)"
@@ -54,4 +60,7 @@ jobs:
             echo "main non contiene ancora il codice: nessun test da eseguire"
             exit 0
           fi
-          python -m pytest tests -q --maxfail=1 -p no:cacheprovider
+          # I test di interfaccia (marker `ui`) non devono poter sparire in silenzio:
+          # si verifica che siano stati raccolti e saltati solo se streamlit manca davvero.
+          python -m pytest tests -q -m "not ui" -p no:cacheprovider
+          python -m pytest tests -q -m ui -p no:cacheprovider
