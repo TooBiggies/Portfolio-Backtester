@@ -43,6 +43,11 @@ STRUMENTI_SOVRANI = {"SHYSIM", "IEFSIM", "TLTSIM", "ZROZSIM"}
 ALIQUOTA_SOVRANA = 12.5
 
 CHIAVE_TABELLA = "tabella_per_asset"
+# Versione della tabella: cambiarla crea un editor nuovo, che riparte dai dati passati.
+# E' l'unico modo di aggiornare un data_editor via codice, perche' il widget non accetta
+# scritture da session_state.
+def nuova_versione_tabella():
+    st.session_state["versione_tabella"] = st.session_state.get("versione_tabella", 0) + 1
 
 
 def carica_preset(nome):
@@ -52,6 +57,7 @@ def carica_preset(nome):
     tabella = st.session_state[CHIAVE_TABELLA].copy()
     tabella["Allocazione (%)"] = [int(PRESET[nome].get(asset, 0.0)) for asset in tabella.index]
     st.session_state[CHIAVE_TABELLA] = tabella
+    nuova_versione_tabella()
 
 
 def applica_colonna(colonna, chiave_campo):
@@ -67,6 +73,7 @@ def applica_colonna(colonna, chiave_campo):
         tabella = tabella.copy()
         tabella[colonna] = float(st.session_state[chiave_campo])
         st.session_state[CHIAVE_TABELLA] = tabella
+        nuova_versione_tabella()
     return _callback
 
 
@@ -79,6 +86,7 @@ def applica_valori_globali():
     tabella["Costi annui (%)"] = float(st.session_state["glob_costi"])
     tabella["Aliquota (%)"] = float(st.session_state["glob_aliquota"])
     st.session_state[CHIAVE_TABELLA] = tabella
+    nuova_versione_tabella()
 
 
 DATA_FILE = Path(__file__).with_name("Timeseries.csv")
@@ -125,7 +133,8 @@ with st.sidebar:
 scelta_preset = st.selectbox("Portafoglio predefinito", list(PRESET),
     help="Approssimazioni costruite con gli asset disponibili in questo dataset.")
 st.button("Carica il portafoglio predefinito", on_click=carica_preset,
-          args=(scelta_preset, assets), width="stretch")
+          args=(scelta_preset,), width="stretch",
+          help="Riscrive la colonna dell'allocazione con i pesi del portafoglio scelto.")
 defaults = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
 
 # Una sola tabella per strumento: allocazione e i tre costi (#73). I valori iniziali
@@ -144,11 +153,20 @@ if CHIAVE_TABELLA not in st.session_state:
         }
     ).set_index("Strumento")
 
-# Nessuna `key` sul widget: il valore vive in `CHIAVE_TABELLA`, che i callback riscrivono
-# prima che l'editor esista. Passare insieme `data=` e `key=` fa scattare il controllo di
-# Streamlit sulle due sorgenti di verita' (StreamlitAPIException).
+# La tabella ha una `key` versionata: cambiando la versione si crea un widget nuovo, che
+# riparte dai dati passati. Serve perche' `st.data_editor` NON accetta aggiornamenti via
+# session_state (`writes_allowed=False`: alzerebbe StreamlitValueAssignmentNotAllowedError),
+# quindi i preset e "applica a tutti" non possono scrivere nello stato del widget: possono
+# solo chiedere un editor nuovo, e lo fanno incrementando la versione.
+#
+# La versione NON cambia quando l'utente modifica una cella, quindi fra un run e l'altro
+# l'editor e' lo stesso widget e la modifica resta sua: e' il caso che prima si perdeva al
+# primo invio, perche' senza key l'identita' del widget cambiava a ogni giro e la modifica
+# appena digitata non aveva piu' un posto dove stare.
+versione = st.session_state.setdefault("versione_tabella", 0)
 tabella = st.data_editor(
     st.session_state[CHIAVE_TABELLA],
+    key=f"editor_asset_{versione}",
     width="stretch",
     num_rows="fixed",
     column_config={
