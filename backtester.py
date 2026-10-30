@@ -196,7 +196,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     # gov_share NON va passato: tax_rate_for() vale (1-quota)*tax_rate + quota*gov_rate, quindi
     # con tax_rate=0 il solo gov_share farebbe pagare il 12,5% sui titoli di Stato anche nel
     # portafoglio a costi zero, e il "lordo" smetterebbe di essere lordo (37.388,49 senza quota
-    # contro 36.688,50 con i Treasury al 100%: 700 EUR di imposte nascoste nel benchmark).
+    # contro 36.688,50 con i Treasury al 100%: 700 USD di imposte nascoste nel benchmark).
     # Il portafoglio ideale non ha parametri fiscali.
     #
     # Nota: annual_costs_rate=0 qui azzera TUTTI i costi di detenzione (bollo compreso, che
@@ -291,7 +291,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     print(f"Volatilità annua (netta)  {_p(m['volatility'])}")
     print(f"Max drawdown (netto)      {_p(m['max_drawdown'])}")
     if m["peak_date"] is not None:
-        print(f"  da {m['peak_date'].date()} a {m['trough_date'].date()}  ({m['amount']:.2f} EUR)")
+        print(f"  da {m['peak_date'].date()} a {m['trough_date'].date()}  ({m['amount']:.2f} USD)")
     _rf_medio = m.get("risk_free_mean") or 0.0
     print(f"Sharpe  (netto, rf {origine_rf} {_rf_medio * 100:.2f}%)  {_r(m['sharpe'])}")
     print(f"Sortino (netto)           {_r(m['sortino'])}")
