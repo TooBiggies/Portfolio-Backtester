@@ -98,7 +98,7 @@ def to_excel_bytes(df_log, df_delta):
 
 with st.sidebar:
     st.header("Parametri")
-    initial_value = st.number_input("Capitale iniziale (€)", min_value=100.0, value=10_000.0, step=1_000.0)
+    initial_value = st.number_input("Capitale iniziale ($)", min_value=100.0, value=10_000.0, step=1_000.0)
     begin_date = st.date_input("Data iniziale", value=max(min_date, pd.Timestamp("2001-01-01").date()), min_value=min_date, max_value=max_date)
     end_date = st.date_input("Data finale", value=min(max_date, pd.Timestamp("2025-09-01").date()), min_value=min_date, max_value=max_date)
     brokerage_pct = st.number_input(
@@ -226,7 +226,7 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
             metriche_tre_portafogli.append({
                 "Portafoglio": etichetta,
                 "CAGR": _percentuale(summary.get(f"cagr_{chiave}")),
-                "Valore finale": f"€ {summary[f'final_{chiave}']:,.2f}",
+                "Valore finale": f"$ {summary[f'final_{chiave}']:,.2f}",
                 "Volatilità annua": _percentuale(m.get("volatility")),
                 "Max drawdown": _percentuale(m.get("max_drawdown")),
                 f"Sharpe (rf={summary.get('risk_free_rate', 0.0) * 100:.2f}%)": _numero(m.get("sharpe")),
