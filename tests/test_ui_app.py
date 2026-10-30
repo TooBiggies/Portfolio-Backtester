@@ -86,16 +86,50 @@ def test_la_tabella_ha_una_riga_per_ogni_asset_e_le_quattro_colonne():
         assert asset in tabella.index
 
 
-def test_i_default_di_costo_sono_quelli_della_issue_73():
-    """AC1: 0,19% di transazione, 0,2% annui, 26% di fiscalità su tutti; 12,5% sui Treasury."""
+def campo_globale(at, testo):
+    return next(x for x in at.number_input if testo in x.label)
+
+
+def test_i_default_dichiarati_sono_010_02_26():
+    """I default sono una **decisione di prodotto**, non un dettaglio: se cambiano, questo
+    test deve cambiare con loro, e chi lo cambia sa che sta spostando i numeri di tutti i
+    report.
+
+    Storia: l'AC1 di #73 diceva 0,19% («è quella di Fineco»); il 30/10 il default è stato
+    portato a 0,1% con il commit 901c919, e Camillo ha confermato che i valori dei test si
+    possono adeguare. Il 12,5% sui quattro Treasury resta invece un requisito fiscale, non
+    una preferenza: quello non si cambia senza una norma che lo dica.
+    """
     at = avvia()
     tabella = tabella_asset(at)
-    assert float((tabella["Commissione (%)"] - 0.19).abs().max()) < 1e-9
+    assert float(campo_globale(at, "Costi di negoziazione").value) == pytest.approx(0.1)
+    assert float(campo_globale(at, "Costi annui").value) == pytest.approx(0.2)
+    assert float(campo_globale(at, "Aliquota fiscale").value) == pytest.approx(26.0)
+    assert float((tabella["Commissione (%)"] - 0.1).abs().max()) < 1e-9
     assert float((tabella["Costi annui (%)"] - 0.2).abs().max()) < 1e-9
     for asset in ("SHYSIM", "IEFSIM", "TLTSIM", "ZROZSIM"):
         assert abs(float(tabella.loc[asset, "Aliquota (%)"]) - 12.5) < 1e-9, asset
-    for asset in ("VTSIM", "GLDSIM", "KMLMSIM", "DBMFSIM"):
-        assert abs(float(tabella.loc[asset, "Aliquota (%)"]) - 26.0) < 1e-9, asset
+
+
+def test_le_celle_per_asset_partono_dai_valori_globali():
+    """AC1/AC2 come invariante, non come numero: ogni riga della tabella deve partire dal
+    valore dei campi generali, tranne i Treasury che partono dal 12,5% di legge.
+
+    Cablare 0,19% rendeva questo test inutile il giorno in cui il default è cambiato
+    (commit 901c919: 0,1%): qui si verifica la relazione, che è quello che conta.
+    """
+    at = avvia()
+    tabella = tabella_asset(at)
+    commissione = float(campo_globale(at, "Costi di negoziazione").value)
+    costi_annui = float(campo_globale(at, "Costi annui").value)
+    aliquota = float(campo_globale(at, "Aliquota fiscale").value)
+
+    assert float((tabella["Commissione (%)"] - commissione).abs().max()) < 1e-9
+    assert float((tabella["Costi annui (%)"] - costi_annui).abs().max()) < 1e-9
+    for asset in ("SHYSIM", "IEFSIM", "TLTSIM", "ZROZSIM"):
+        assert abs(float(tabella.loc[asset, "Aliquota (%)"]) - 12.5) < 1e-9, asset
+    for asset in ("VTSIM", "GLDSIM", "KMLMSIM", "DBMFSIM", "SPYSIM", "VXUSSIM", "CASHX"):
+        assert abs(float(tabella.loc[asset, "Aliquota (%)"]) - aliquota) < 1e-9, asset
 
 
 def test_l_allocazione_di_default_somma_a_cento_ed_e_intera():
@@ -150,7 +184,10 @@ def test_la_tabella_arriva_al_motore_come_parametri_per_asset():
     lordo_prima = valore_finale(at, "Lordo")
     netto_prima = valore_finale(at, "Netto")
 
-    scrivi_cella(at, "ZROZSIM", "Aliquota (%)", 26.0)        # da 12,5% a 26%
+    # Si usa VTSIM, che nel portafoglio di default ha sempre peso > 0: cambiare
+    # l'aliquota di uno strumento a peso zero non puo' cambiare il risultato, e il test
+    # fallirebbe per la ragione sbagliata (il default 60/10/20/10 non contiene ZROZSIM).
+    scrivi_cella(at, "VTSIM", "Aliquota (%)", 0.0)           # da 26% a 0%
     esegui_backtest(at)
     assert valore_finale(at, "Lordo") == lordo_prima
     assert valore_finale(at, "Netto") != netto_prima
@@ -238,7 +275,10 @@ def test_i_tre_portafogli_hanno_metriche_diverse_e_coerenti():
     tabella = tabella_comparativa(at)
 
     def numero_euro(testo):
-        return float(testo.replace("€", "").replace(".", "").replace(",", ".").strip())
+        """Il simbolo cambia col tempo (€ -> $, commit 3f68684): il test non deve
+        dipendere da quale valuta è scritta accanto al numero."""
+        ripulito = "".join(c for c in testo if c.isdigit() or c in ",.-")
+        return float(ripulito.replace(",", ""))
 
     def percentuale(testo):
         return float(testo.replace("%", "").replace(",", ".").strip())
