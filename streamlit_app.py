@@ -99,12 +99,12 @@ def to_excel_bytes(df_log, df_delta):
 with st.sidebar:
     st.header("Parametri")
     initial_value = st.number_input("Capitale iniziale (€)", min_value=100.0, value=10_000.0, step=1_000.0)
-    begin_date = st.date_input("Data iniziale", value=max(min_date, pd.Timestamp("2010-01-02").date()), min_value=min_date, max_value=max_date)
+    begin_date = st.date_input("Data iniziale", value=max(min_date, pd.Timestamp("2001-01-01").date()), min_value=min_date, max_value=max_date)
     end_date = st.date_input("Data finale", value=min(max_date, pd.Timestamp("2025-09-01").date()), min_value=min_date, max_value=max_date)
     brokerage_pct = st.number_input(
-        "Costi di negoziazione (%)", min_value=0.0, max_value=10.0, value=0.19, step=0.01,
+        "Costi di negoziazione (%)", min_value=0.0, max_value=10.0, value=0.1, step=0.01,
         key="glob_comm", on_change=applica_colonna("Commissione (%)", "glob_comm"),
-        help="Commissione del broker, per operazione. 0,19% è quella di Fineco. "
+        help="Commissione del broker, per operazione."
              "Cambiandola si applica a tutti gli strumenti.")
     annual_costs_pct = st.number_input(
         "Costi annui (%)", min_value=0.0, max_value=10.0, value=0.2, step=0.01,
@@ -116,19 +116,17 @@ with st.sidebar:
         key="glob_aliquota", on_change=applica_colonna("Aliquota (%)", "glob_aliquota"),
         help="26% sui guadagni ordinari, 12,5% sui titoli di Stato white list. Il valore "
              "precompilato per ogni strumento si può cambiare nella tabella.")
-    rebalance_pct = st.number_input("Soglia di ribilanciamento (%)", min_value=0.1, max_value=100.0, value=10.0, step=0.5)
+    rebalance_pct = st.number_input("Soglia di ribilanciamento assoluta (%)", min_value=0.1, max_value=100.0, value=5.0, step=0.5)
     st.button("Applica i valori globali a tutti gli strumenti", on_click=applica_valori_globali,
               width="stretch",
               help="Sovrascrive commissione, costi annui e aliquota di ogni riga con i tre "
                    "valori qui sopra. Le modifiche fatte a mano nella tabella vanno perse.")
 
-st.subheader("Asset allocation")
-
 scelta_preset = st.selectbox("Portafoglio predefinito", list(PRESET),
     help="Approssimazioni costruite con gli asset disponibili in questo dataset.")
 st.button("Carica il portafoglio predefinito", on_click=carica_preset,
           args=(scelta_preset, assets), width="stretch")
-defaults = {"VTSIM": 60.0, "GLDSIM": 10.0, "ZROZSIM": 25.0, "DBMFSIM": 5.0}
+defaults = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
 
 # Una sola tabella per strumento: allocazione e i tre costi (#73). I valori iniziali
 # vengono dai campi generali della barra laterale, tranne l'aliquota dei Treasury che parte
@@ -162,7 +160,7 @@ tabella = st.data_editor(
             help="Commissione del broker per operazione su questo strumento."),
         "Costi annui (%)": st.column_config.NumberColumn(
             "Costi annui (%)", min_value=0.0, max_value=10.0, step=0.01, format="%.2f",
-            help="Costo di detenzione annuo: bollo e piattaforma. Il TER è già nelle serie."),
+            help="Costo di detenzione annuo: bollo e piattaforma. Il TER è già nelle serie con suffisso SIM."),
         "Aliquota (%)": st.column_config.NumberColumn(
             "Aliquota (%)", min_value=0.0, max_value=100.0, step=0.1, format="%.1f",
             help="12,5% sui titoli di Stato white list, 26% sul resto."),
@@ -239,8 +237,9 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
         st.dataframe(pd.DataFrame(metriche_tre_portafogli), hide_index=True, width="stretch")
         st.caption(
             "Le tre righe sono le stesse operazioni lette su tre curve di equity: il lordo non "
-            "paga nulla, il broker paga commissioni e costi, il netto paga anche le imposte. "
-            "La differenza fra le righe è l'effetto di costi e fiscalità, non un calcolo diverso."
+            "paga nulla, il broker paga commissioni e costi e fiscalità (solo quando c'è un ribilanciamento), "
+            "il netto paga le imposte ipotizzando la liquidazione totale del portafoglio. "
+            "La differenza fra le righe è quindi l'effetto di costi e fiscalità."
         )
         st.caption(
             f"Sharpe e Sortino usano {summary.get('risk_free_rate_source', '0')} come tasso privo di "
