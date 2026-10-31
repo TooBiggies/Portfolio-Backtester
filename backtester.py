@@ -93,7 +93,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     # Ideal portfolio (zero costs) — its "broker" will be labeled as "gross" in output
     ideal_pf, _ = Portfolio.from_weights(
         prices=initial_prices, value=initial_value,
-        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0.)
+        weights=weights, brokerage_fee_rate=0., annual_costs_rate=0., tax_rate=0.)
     ideal_rebalancer = Rebalancer(
         target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=0.)
 
@@ -101,7 +101,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     real_pf, fees = Portfolio.from_weights(
         prices=initial_prices, value=initial_value,
         weights=weights, brokerage_fee_rate=brokerage_fee_rate,
-        annual_costs_rate=annual_costs_rate)
+        annual_costs_rate=annual_costs_rate, tax_rate=tax_rate)
     real_rebalancer = Rebalancer(
         target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
 

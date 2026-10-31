@@ -4,7 +4,7 @@ import numpy as np
 from contextlib import contextmanager
 
 class Portfolio:
-    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None):
+    def __init__(self, prices: pd.Series, initial_value: float = 1., brokerage_fee_rate: float=0., ter: pd.Series = None, tax_rate: float = 0.26):
         """
         Initializes a Portfolio instance with price data and financial settings.
 
@@ -13,6 +13,7 @@ class Portfolio:
             initial_value (float): The starting capital amount of the portfolio. Defaults to 1.
             brokerage_fee_rate (float): The rate charged for brokerage transactions (e.g., 0.001 for 0.1%). Defaults to 0.
             annual_costs_rate (float): The rate charged for annual holding costs. Defaults to 0.
+            tax_rate (float): The capital gains tax rate used to estimate liquidation taxes.
 
         Attributes:
             prices: The source of asset prices.
@@ -25,6 +26,7 @@ class Portfolio:
         self.assets_costs = pd.Series(0.0, index=prices.index)  # For PMC
 
         self.brokerage_fee_rate = brokerage_fee_rate
+        self.tax_rate = tax_rate
         self.initial_value = initial_value
 
         if ter is None:
@@ -35,7 +37,7 @@ class Portfolio:
         self.bollo = pd.Series(0.002/252, index=prices.index) # assumo di pagare ogni giorno lo 0.2/252 del controvalore giornaliero
 
     @classmethod
-    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate):
+    def from_weights(cls, prices, value, weights, brokerage_fee_rate, annual_costs_rate, tax_rate=0.26):
         """
         Factory method to create a Portfolio and immediately allocate
         capital based on target weights at T=0.
@@ -45,6 +47,7 @@ class Portfolio:
             value (float): Total starting capital.
             weights (dict): Target allocation weights {asset: weight}.
             brokerage_fee_rate (float): Fee rate for transactions.
+            tax_rate (float): Capital gains tax rate used to estimate liquidation taxes.
 
         Returns:
             Portfolio: An initialized Portfolio instance with holdings.
@@ -56,6 +59,7 @@ class Portfolio:
             initial_value=value,
             brokerage_fee_rate=brokerage_fee_rate,
             ter=ter,
+            tax_rate=tax_rate,
         )
 
         fees = {}
@@ -89,7 +93,7 @@ class Portfolio:
 
     @property
     def net_assets_values(self):
-         return self.broker_assets_values - self.cash_out_costs()
+         return self.broker_assets_values - self.cash_out_costs(self.tax_rate)
 
     @property
     def broker_assets_value(self):
@@ -200,8 +204,8 @@ class Portfolio:
         price = self.prices[asset]
         return self.sell(price, asset, -units, tax_rate) if units < 0 else self.buy(price, asset, units)
 
-    def cash_out_costs(self, tax_rate: float=0.26):
-        "sell everything — returns a Series of exit costs per asset"
+    def cash_out_costs(self, tax_rate: float):
+        """Return estimated exit costs per asset using the supplied tax rate."""
 
         costs_per_asset = pd.Series(0., index=self.holdings.index)
         with self.simulate_transactions() as temp:
@@ -370,7 +374,7 @@ class PortfolioTracker:
         pmc_dict = {f"PMC_{k}": v for k, v in get_per_asset('pmc').to_dict().items()}
         broker_dict = {f"Broker_{k}": v for k, v in get_per_asset('broker_assets_values').to_dict().items()}
         net_dict = {f"Net_{k}": v for k, v in get_per_asset('net_assets_values').to_dict().items()}
-        costs_holding_dict = {f"HoldingCost_{k}": v for k, v in get_per_asset('daily_annual_costs').to_dict().items()}
+        costs_holding_dict = {f"HoldingCost_{k}": -v for k, v in get_per_asset('daily_annual_costs').to_dict().items()}
 
         gross_dict = {}
         gross_value = None

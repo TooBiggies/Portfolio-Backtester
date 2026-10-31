@@ -64,7 +64,8 @@ def run_portfolio_evolution(df_prices: pd.DataFrame,
     initial_prices = df_prices.iloc[0]
     portfolio = Portfolio(prices=initial_prices, 
                          initial_value=initial_value, 
-                         brokerage_fee_rate=brokerage_fee_rate)
+                         brokerage_fee_rate=brokerage_fee_rate,
+                         tax_rate=tax_rate)
     
     # Initialize holdings based on initial weights
     for asset, weight in initial_weights.items():
