@@ -97,6 +97,27 @@ assets = [c for c in raw.columns if c != "Date"]
 min_date = raw["Date"].min().date()
 max_date = raw["Date"].max().date()
 
+def finestra_comune(attivi):
+    """Finestra in cui TUTTI gli strumenti attivi hanno un prezzo: (inizio, fine, chi_decide).
+
+    È la stessa regola che applica il motore con le date vuote (issue #8); qui serve solo
+    per dirlo all'utente PRIMA di lanciare, invece di farlo scoprire dopo.
+    """
+    partenze, fini = {}, {}
+    for asset in attivi:
+        serie = raw[["Date", asset]].dropna()
+        serie = serie[pd.to_numeric(serie[asset], errors="coerce").notna()]
+        if len(serie):
+            partenze[asset] = serie["Date"].min()
+            fini[asset] = serie["Date"].max()
+    if not partenze:
+        return None
+    inizio = max(partenze.values())
+    fine = min(fini.values())
+    chi = next(a for a, d in partenze.items() if d == inizio)
+    return inizio, fine, chi
+
+
 def to_excel_bytes(df_log, df_delta):
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -107,8 +128,18 @@ def to_excel_bytes(df_log, df_delta):
 with st.sidebar:
     st.header("Parametri")
     initial_value = st.number_input("Capitale iniziale ($)", min_value=100.0, value=10_000.0, step=1_000.0)
-    begin_date = st.date_input("Data iniziale", value=max(min_date, pd.Timestamp("2001-01-01").date()), min_value=min_date, max_value=max_date)
-    end_date = st.date_input("Data finale", value=min(max_date, pd.Timestamp("2025-09-01").date()), min_value=min_date, max_value=max_date)
+    orizzonte_auto = st.checkbox(
+        "Orizzonte automatico", value=False, key="orizzonte_auto",
+        help="Usa la finestra più lunga in cui TUTTI gli strumenti scelti hanno un prezzo: "
+             "l'inizio è la più recente fra le date di partenza degli strumenti, la fine è "
+             "l'ultima data disponibile. Non serve per la volatilità di un singolo strumento: "
+             "serve perché un asset che parte dopo accorcia la storia comune a tutto il "
+             "portafoglio (issue #8).")
+    if orizzonte_auto:
+        begin_date, end_date = None, None
+    else:
+        begin_date = st.date_input("Data iniziale", value=max(min_date, pd.Timestamp("2001-01-01").date()), min_value=min_date, max_value=max_date)
+        end_date = st.date_input("Data finale", value=min(max_date, pd.Timestamp("2025-09-01").date()), min_value=min_date, max_value=max_date)
     brokerage_pct = st.number_input(
         "Costi di negoziazione (%)", min_value=0.0, max_value=10.0, value=0.1, step=0.01,
         key="glob_comm", on_change=applica_colonna("Commissione (%)", "glob_comm"),
@@ -193,11 +224,24 @@ if not attivi:
     st.warning("Nessuno strumento con allocazione maggiore di zero: il backtest non ha niente da simulare.")
 
 st.metric("Totale allocazione", f"{total_weight:.0f}%")
+
+if orizzonte_auto and attivi:
+    finestra = finestra_comune(attivi)
+    if finestra:
+        inizio, fine, chi = finestra
+        anni = (fine - inizio).days / 365.25
+        st.caption(
+            f"Orizzonte automatico: dal **{inizio.date()}** al **{fine.date()}** "
+            f"({anni:.1f} anni). L'inizio lo decide **{chi}**, lo strumento che parte più "
+            f"tardi; la fine è la data più recente comune a tutti."
+        )
+    else:
+        st.warning("Nessuno strumento attivo ha una serie di prezzi: finestra non calcolabile.")
 if attivi and total_weight != 100:
     st.warning(f"L'allocazione somma a {total_weight:.0f}% e non a 100%: correggila prima di eseguire.")
 
 if st.button("Esegui backtest", type="primary", width="stretch"):
-    if begin_date >= end_date:
+    if not orizzonte_auto and begin_date >= end_date:
         st.error("La data iniziale deve precedere la data finale.")
     elif total_weight != 100:
         st.error(f"L'allocazione deve sommare a 100%. Totale attuale: {total_weight:.0f}%.")
@@ -214,8 +258,8 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
             df_log, df_delta, summary = backtest(
                 initial_value=initial_value,
                 weights=weights,
-                begin_date=pd.Timestamp(begin_date),
-                end_date=pd.Timestamp(end_date),
+                begin_date=pd.Timestamp(begin_date) if begin_date is not None else None,
+                end_date=pd.Timestamp(end_date) if end_date is not None else None,
                 brokerage_fee_rate=commissioni,
                 rebalance_threshold=rebalance_pct / 100.0,
                 tax_rate=aliquote,
@@ -258,6 +302,10 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
             "paga nulla, il broker paga commissioni e costi e fiscalità (solo quando c'è un ribilanciamento), "
             "il netto paga le imposte ipotizzando la liquidazione totale del portafoglio. "
             "La differenza fra le righe è quindi l'effetto di costi e fiscalità."
+        )
+        st.caption(
+            f"Simulato dal **{summary['begin_date'].date()}** al **{summary['end_date'].date()}** "
+            f"({summary['years']:.2f} anni), capitale iniziale {initial_value:,.0f}."
         )
         st.caption(
             f"Sharpe e Sortino usano {summary.get('risk_free_rate_source', '0')} come tasso privo di "
