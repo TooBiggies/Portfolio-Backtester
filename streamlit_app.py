@@ -25,15 +25,34 @@ ASSET_INFO = {
     "DBMFSIM": ("Managed futures replicato", "Replica della performance media dei gestori CTA (indice SG CTA)."),
 }
 
+# Portafoglio che l'app carica all'apertura. Il preset "Attuale" legge DA QUI, non da una
+# copia: prima erano due dizionari separati e si erano gia' disallineati (il preset diceva
+# 60/10/25/5 con ZROZ al 25%, il default era 60/10/20/10 con IEF al 20%: caricare "Attuale"
+# cambiava il portafoglio invece di riportarlo all'inizio).
+DEFAULT_PESI = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
+
 # Portafogli pronti: approssimazioni costruite con gli asset disponibili nel dataset.
+# I nomi restano corti; la composizione la scrive `composizione_preset()` con i nomi degli
+# strumenti, perche' "60/10/20/10" non dice a quale strumento corrisponde ogni percentuale
+# (issue #85).
 PRESET = {
-    "Attuale (60/10/25/5)": {"VTSIM": 60.0, "GLDSIM": 10.0, "ZROZSIM": 25.0, "DBMFSIM": 5.0},
+    "Attuale": DEFAULT_PESI,
     "Classico 60/40": {"VTSIM": 60.0, "IEFSIM": 40.0},
     "Permanent Portfolio": {"VTSIM": 25.0, "TLTSIM": 25.0, "GLDSIM": 25.0, "CASHX": 25.0},
     "All weather": {"VTSIM": 30.0, "TLTSIM": 40.0, "IEFSIM": 15.0, "GLDSIM": 15.0},
     "Golden butterfly": {"VTSIM": 40.0, "TLTSIM": 20.0, "SHYSIM": 20.0, "GLDSIM": 20.0},
     "Solo azionario globale": {"VTSIM": 100.0},
 }
+
+
+def composizione_preset(nome):
+    """«60% VTSIM (azionario globale) · 10% GLDSIM (oro fisico) · …» per il preset scelto."""
+    pezzi = []
+    for asset, peso in PRESET[nome].items():
+        if float(peso) > 0:
+            nome_leggibile = ASSET_INFO.get(asset, (asset, ""))[0]
+            pezzi.append(f"{float(peso):.0f}% {asset} ({nome_leggibile})")
+    return " · ".join(pezzi)
 
 
 # Aliquote di partenza per strumento: 12,5% sui titoli di Stato white list (base ridotta al
@@ -132,10 +151,11 @@ with st.sidebar:
 
 scelta_preset = st.selectbox("Portafoglio predefinito", list(PRESET),
     help="Approssimazioni costruite con gli asset disponibili in questo dataset.")
+st.caption(f"Composizione di «{scelta_preset}»: {composizione_preset(scelta_preset)}")
 st.button("Carica il portafoglio predefinito", on_click=carica_preset,
           args=(scelta_preset,), width="stretch",
           help="Riscrive la colonna dell'allocazione con i pesi del portafoglio scelto.")
-defaults = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
+defaults = DEFAULT_PESI
 
 # Una sola tabella per strumento: allocazione e i tre costi (#73). I valori iniziali
 # vengono dai campi generali della barra laterale, tranne l'aliquota dei Treasury che parte
