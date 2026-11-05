@@ -104,6 +104,34 @@ def serie_da_dataset(df, colonna, dates, date_column="Date"):
     return serie.reindex(dates)
 
 
+def finestra_simulata(dati, asset_columns, begin_date=None, end_date=None):
+    """Prima e ultima data che `backtest()` simulerà davvero, dati gli stessi ingressi.
+
+    E' la regola usata dal motore: si tengono le righe dentro la finestra richiesta, poi
+    solo quelle in cui **tutti** gli asset attivi hanno un prezzo (``prepare_price_dataframe``
+    piu' il controllo sui NaN). L'interfaccia la chiama per dichiarare l'avviso di orizzonte
+    breve *prima* di eseguire: usando la stessa funzione del motore, i due non possono
+    avvisare in casi diversi (issue #88).
+
+    Restituisce ``(prima, ultima)`` oppure ``(None, None)`` se non c'e' nessuna riga valida.
+    """
+    prezzi, _, _ = prepare_price_dataframe(dati, begin_date=begin_date, end_date=end_date,
+                                           asset_columns=list(asset_columns))
+    if prezzi.empty or prezzi.dropna().empty:
+        return None, None
+    completi = prezzi.dropna()
+    return completi.index[0], completi.index[-1]
+
+
+def anni_simulati(dati, asset_columns, begin_date=None, end_date=None):
+    """Anni della finestra effettivamente simulata, o ``None`` se non calcolabile."""
+    prima, ultima = finestra_simulata(dati, asset_columns, begin_date, end_date)
+    if prima is None:
+        return None
+    giorni = (ultima - prima).days
+    return giorni / 365.25 if giorni > 0 else None
+
+
 def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0.,
              rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False,
              save_outputs=True, risk_free_rate=0.0, data_path="./Timeseries.csv", gov_share=None,

@@ -14,7 +14,7 @@ import warnings
 import pandas as pd
 import pytest
 
-from backtester import (ANNI_MINIMI_AFFIDABILI, backtest,
+from backtester import (ANNI_MINIMI_AFFIDABILI, anni_simulati, backtest,
                         messaggio_orizzonte_breve)
 
 DATASET = __file__.rsplit("/tests/", 1)[0] + "/Timeseries.csv"
@@ -135,3 +135,58 @@ def test_interfaccia_non_avvisa_su_orizzonte_lungo():
     at = avvia()
     at.checkbox[0].set_value(True).run()                       # finestra automatica: 25 anni
     assert "affidabil" not in avvisi(at), f"avvisi presenti: {avvisi(at)!r}"
+
+
+# --------------------- app e motore: gli stessi casi, non casi simili
+
+def dataset_come_l_app():
+    """Lo stesso `raw` che legge streamlit_app.py: la funzione dell'app non e' riscrivibile."""
+    dati = pd.read_csv(DATASET, sep=";")
+    dati["Date"] = pd.to_datetime(dati["Date"], dayfirst=True, errors="coerce")
+    return dati.dropna(subset=["Date"])
+
+
+@pytest.mark.parametrize("inizio,fine", [
+    ("2022-01-03", "2025-09-01"),     # 3,7 anni: avviso
+    ("2022-01-01", "2025-09-01"),     # inizio di sabato: il motore parte il lunedi'
+    ("2010-01-04", "2025-09-01"),     # 15,7 anni: nessun avviso
+    ("2015-09-01", "2025-09-01"),     # 10,0 anni esatti: il caso di confine
+])
+def test_gli_anni_dell_interfaccia_sono_quelli_del_motore(inizio, fine):
+    """L'interfaccia non deve **stimare** la finestra: deve usare la stessa regola del motore.
+
+    E' il meccanismo che garantisce «app e motore avvisano negli stessi casi»: se i due
+    numeri coincidono, coincidono anche le decisioni rispetto alla soglia.
+    """
+    pesi = {"VTSIM": 0.6, "GLDSIM": 0.1, "IEFSIM": 0.2, "DBMFSIM": 0.1}
+    anni_app = anni_simulati(dataset_come_l_app(), list(pesi), inizio, fine)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        _, _, s = backtest(100_000.0, pesi, begin_date=inizio, end_date=fine,
+                           data_path=DATASET, save_outputs=False)
+    assert anni_app == pytest.approx(s["years"], abs=1e-12)
+    assert (messaggio_orizzonte_breve(anni_app) is None) == (not s["orizzonte_breve"])
+
+
+@pytest.mark.ui
+@pytest.mark.parametrize("inizio,fine,atteso", [
+    ("2022-01-03", "2025-09-01", True),       # breve: avviso
+    ("2022-01-01", "2025-09-01", True),       # inizio di sabato: avviso, come il motore
+    ("2010-01-04", "2025-09-01", False),      # lungo: nessun avviso
+])
+def test_interfaccia_e_motore_concordano_sull_avviso(inizio, fine, atteso):
+    """Un solo caso di divergenza qui vuol dire due fonti di verita' per la stessa soglia."""
+    at = AppTest.from_file(APP, default_timeout=180)
+    at.run()
+    at.checkbox[0].set_value(False).run()
+    at.date_input[0].set_value(pd.Timestamp(inizio).date()).run()
+    at.date_input[1].set_value(pd.Timestamp(fine).date()).run()
+    avviso_ui = any("Orizzonte breve" in w.value for w in at.warning)
+    assert avviso_ui is atteso, f"interfaccia: avviso={avviso_ui}, atteso {atteso}"
+
+    pesi = {"VTSIM": 0.6, "GLDSIM": 0.1, "IEFSIM": 0.2, "DBMFSIM": 0.1}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        _, _, s = backtest(100_000.0, pesi, begin_date=inizio, end_date=fine,
+                           data_path=DATASET, save_outputs=False)
+    assert s["orizzonte_breve"] is atteso, f"motore: {s['orizzonte_breve']}, atteso {atteso}"

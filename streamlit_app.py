@@ -4,7 +4,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from backtester import ANNI_MINIMI_AFFIDABILI, backtest, messaggio_orizzonte_breve
+from backtester import (ANNI_MINIMI_AFFIDABILI, anni_simulati, backtest,
+                        finestra_simulata, messaggio_orizzonte_breve)
 
 st.set_page_config(page_title="Portfolio Backtester", page_icon="📈", layout="wide")
 st.title("Portfolio Backtester")
@@ -242,12 +243,15 @@ if orizzonte_auto and attivi:
 if attivi and total_weight != 100:
     st.warning(f"L'allocazione somma a {total_weight:.0f}% e non a 100%: correggila prima di eseguire.")
 
-# Orizzonte breve: si avvisa e si lascia procedere (issue #88). Con date scelte a mano la
-# finestra si conosce gia' qui, quindi l'avviso arriva prima del clic e non dopo.
+# Orizzonte breve: si avvisa e si lascia procedere (issue #88). Gli anni si calcolano con
+# `anni_simulati`, la stessa funzione che usa il motore per il proprio avviso: la finestra
+# e' quella delle righe realmente simulate (una data iniziale di sabato slitta al primo
+# giorno di borsa), quindi app e motore avvisano negli stessi casi, non in casi simili.
 if attivi:
-    if not orizzonte_auto:
-        finestra_anni = (end_date - begin_date).days / 365.25
-    avviso_periodo = messaggio_orizzonte_breve(finestra_anni)
+    inizio_chiesto = None if orizzonte_auto else begin_date
+    fine_chiesta = None if orizzonte_auto else end_date
+    avviso_periodo = messaggio_orizzonte_breve(
+        anni_simulati(raw, list(attivi), inizio_chiesto, fine_chiesta))
     if avviso_periodo:
         st.warning(avviso_periodo)
 
