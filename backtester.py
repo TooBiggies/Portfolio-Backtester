@@ -1,8 +1,32 @@
+import warnings
+
 import matplotlib.pyplot as plt
 import pandas as pd
 
 from engine import Portfolio, PortfolioTracker, Rebalancer
 from metrics import risk_metrics
+
+# Sotto questa soglia il rendimento annualizzato dipende quasi solo dal punto di partenza:
+# un CAGR su tre anni e' il risultato di tre anni, non una stima del rendimento atteso
+# (issue #88). Non e' un divieto: la simulazione si esegue, ma il numero va letto sapendolo.
+ANNI_MINIMI_AFFIDABILI = 10
+
+
+def messaggio_orizzonte_breve(years):
+    """Avviso quando l'orizzonte e' sotto la soglia di affidabilita', altrimenti None.
+
+    Serve al motore (warning), al riepilogo (chiave `avviso_orizzonte`) e all'interfaccia,
+    che lo mostra prima di eseguire: un testo solo, in un posto solo.
+    """
+    try:
+        anni = float(years)
+    except (TypeError, ValueError):
+        return None
+    if anni >= ANNI_MINIMI_AFFIDABILI:
+        return None
+    return (f"Orizzonte breve: {anni:.1f} anni, sotto la soglia di {ANNI_MINIMI_AFFIDABILI}. "
+            f"Il rendimento annualizzato di un periodo cosi' corto dipende quasi solo da dove "
+            f"comincia e da dove finisce: i risultati potrebbero non essere affidabili.")
 
 def prepare_price_dataframe(df, begin_date=None, end_date=None, asset_columns=None, date_column='Date'):
     """
@@ -262,14 +286,18 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     giorni = (dates[-1] - dates[0]).days
     if giorni <= 0:
         raise ValueError("La finestra di simulazione deve coprire almeno un giorno")
-    years = round(giorni / 365.25, 2)
-    if years <= 0:
-        # una finestra di 1-2 giorni si arrotonda a 0,00: servono le frazioni esatte
-        years = giorni / 365.25
+    # Nessun arrotondamento: `years` e' un **esponente** (compound_factor ** (1/years)), e
+    # su finestre corte l'arrotondamento a due decimali domina il risultato. Su 5 giorni di
+    # borsa 0,0164 diventava 0,02 e il CAGR passava da 32.996% a 11.639% (issue #88).
+    # L'arrotondamento resta solo dove si stampa.
+    years = giorni / 365.25
+    avviso_orizzonte = messaggio_orizzonte_breve(years)
+    if avviso_orizzonte:
+        warnings.warn(avviso_orizzonte, UserWarning, stacklevel=2)
 
     print(f"Orizzonte temporale   {dates[0].date()} / {dates[-1].date()}")
     print(
-        f"Anni in simulazione   {years}"
+        f"Anni in simulazione   {years:.2f}"
     )
     print(f"CAGR  (gross)    {(tracker.compound_factor['gross_assets_value']**(1/years) - 1) * 100:.2f}%")
     print(f"CAGR  (broker)   {(tracker.compound_factor['broker_assets_value']**(1/years) - 1) * 100:.2f}%")
@@ -321,6 +349,10 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         "begin_date": dates[0],
         "end_date": dates[-1],
         "years": years,
+        # Orizzonte breve: la simulazione si esegue lo stesso, ma chi legge il numero
+        # deve sapere che sotto i dieci anni il CAGR e' poco informativo (issue #88).
+        "orizzonte_breve": avviso_orizzonte is not None,
+        "avviso_orizzonte": avviso_orizzonte,
         "cagr_gross": tracker.compound_factor["gross_assets_value"] ** (1 / years) - 1,
         "cagr_broker": tracker.compound_factor["broker_assets_value"] ** (1 / years) - 1,
         "cagr_net": tracker.compound_factor["net_assets_value"] ** (1 / years) - 1,

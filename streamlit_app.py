@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from backtester import backtest
+from backtester import ANNI_MINIMI_AFFIDABILI, backtest, messaggio_orizzonte_breve
 
 st.set_page_config(page_title="Portfolio Backtester", page_icon="📈", layout="wide")
 st.title("Portfolio Backtester")
@@ -225,11 +225,13 @@ if not attivi:
 
 st.metric("Totale allocazione", f"{total_weight:.0f}%")
 
+finestra_anni = None
 if orizzonte_auto and attivi:
     finestra = finestra_comune(attivi)
     if finestra:
         inizio, fine, chi = finestra
         anni = (fine - inizio).days / 365.25
+        finestra_anni = anni
         st.caption(
             f"Orizzonte automatico: dal **{inizio.date()}** al **{fine.date()}** "
             f"({anni:.1f} anni). L'inizio lo decide **{chi}**, lo strumento che parte più "
@@ -239,6 +241,15 @@ if orizzonte_auto and attivi:
         st.warning("Nessuno strumento attivo ha una serie di prezzi: finestra non calcolabile.")
 if attivi and total_weight != 100:
     st.warning(f"L'allocazione somma a {total_weight:.0f}% e non a 100%: correggila prima di eseguire.")
+
+# Orizzonte breve: si avvisa e si lascia procedere (issue #88). Con date scelte a mano la
+# finestra si conosce gia' qui, quindi l'avviso arriva prima del clic e non dopo.
+if attivi:
+    if not orizzonte_auto:
+        finestra_anni = (end_date - begin_date).days / 365.25
+    avviso_periodo = messaggio_orizzonte_breve(finestra_anni)
+    if avviso_periodo:
+        st.warning(avviso_periodo)
 
 if st.button("Esegui backtest", type="primary", width="stretch"):
     if not orizzonte_auto and begin_date >= end_date:
