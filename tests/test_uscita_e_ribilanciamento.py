@@ -32,7 +32,11 @@ def test_l_uscita_paga_il_26_per_cento_solo_sul_guadagno():
 
 def test_la_commissione_di_uscita_si_somma_all_imposta():
     costi = portafoglio_con_guadagno(tasso_commissione=0.0029).cash_out_costs()
-    assert costi["A"] == pytest.approx(130.0 + 200.0 * 5 * 0.0029)
+    # PMC 100,29: la commissione d'ingresso (1,45 su 500) fa parte del costo di carico,
+    # quindi il guadagno e' 5 x (200 - 100,29) = 498,55 e non 500. La commissione d'uscita
+    # (2,90) riduce il corrispettivo: imposta 0,26 x 495,65 = 128,869. Totale 131,769.
+    # Prima del #87 erano 130 + 2,90 = 132,90, con entrambe le commissioni fuori dal conto.
+    assert costi["A"] == pytest.approx(2.9 + 0.26 * (5 * (200.0 - 100.29) - 2.9))
 
 
 def test_in_perdita_non_si_paga_imposta_ma_si_paga_la_commissione():
