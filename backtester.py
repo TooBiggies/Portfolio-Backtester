@@ -174,6 +174,21 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
             + ". Restringere la data iniziale o finale all'intervallo comune."
         )
 
+    # Finestra vuota: date tutte fuori dal dataset, solo giorni non di borsa, oppure data
+    # iniziale successiva alla finale. Prima usciva `IndexError: single positional indexer
+    # is out-of-bounds` da `prices.iloc[0]` — un messaggio che non dice niente a chi usa
+    # l'app, che mostra i ValueError e non gli IndexError.
+    if prices.empty:
+        date_valide = pd.to_datetime(dati["Date"], dayfirst=True, errors="coerce").dropna()
+        dal = date_valide.min().date() if len(date_valide) else "n.d."
+        al = date_valide.max().date() if len(date_valide) else "n.d."
+        raise ValueError(
+            "Nessun giorno di borsa nella finestra richiesta "
+            f"({pd.to_datetime(begin_date).date()} / {pd.to_datetime(end_date).date()}): "
+            "le date sono invertite, oppure cadono tutte fuori dai dati. "
+            f"Il dataset copre dal {dal} al {al}."
+        )
+
     dates = prices.index
     initial_prices = prices.iloc[0]
 
