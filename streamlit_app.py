@@ -138,8 +138,30 @@ with st.sidebar:
     if orizzonte_auto:
         begin_date, end_date = None, None
     else:
-        begin_date = st.date_input("Data iniziale", value=max(min_date, pd.Timestamp("2001-01-01").date()), min_value=min_date, max_value=max_date)
-        end_date = st.date_input("Data finale", value=min(max_date, pd.Timestamp("2025-09-01").date()), min_value=min_date, max_value=max_date)
+        # Se il bottone sotto l'errore ha chiesto di rientrare nella finestra, la richiesta
+        # va applicata PRIMA che i widget esistano: dopo, Streamlit non permette di
+        # riscriverne il valore ("cannot be modified after the widget is instantiated").
+        if "chiedi_finestra" in st.session_state:
+            _primo, _ultimo = st.session_state.pop("chiedi_finestra")
+            st.session_state["data_inizio"] = _primo
+            st.session_state["data_fine"] = _ultimo
+        st.session_state.setdefault("data_inizio", max(min_date, pd.Timestamp("2001-01-01").date()))
+        st.session_state.setdefault("data_fine", min(max_date, pd.Timestamp("2025-09-01").date()))
+        begin_date = st.date_input(
+            "Data iniziale",
+            key="data_inizio",
+            min_value=min_date, max_value=max_date,
+            help=f"Il calendario mostra dieci anni avanti e indietro dalla data scelta: per "
+                 f"andare più indietro **scrivi l'anno nel campo** (o usa le frecce ←→). "
+                 f"I dati arrivano dal {min_date} al {max_date}. Per partire dal primo giorno "
+                 f"disponibile usa «Orizzonte automatico».")
+        end_date = st.date_input(
+            "Data finale",
+            key="data_fine",
+            min_value=min_date, max_value=max_date,
+            help=f"Il calendario mostra dieci anni avanti e indietro dalla data scelta: per "
+                 f"una data più lontana **scrivi l'anno nel campo** (o usa le frecce ←→). "
+                 f"I dati arrivano fino al {max_date}.")
     brokerage_pct = st.number_input(
         "Costi di negoziazione (%)", min_value=0.0, max_value=10.0, value=0.1, step=0.01,
         key="glob_comm", on_change=applica_colonna("Commissione (%)", "glob_comm"),
@@ -240,6 +262,29 @@ if orizzonte_auto and attivi:
 if attivi and total_weight != 100:
     st.warning(f"L'allocazione somma a {total_weight:.0f}% e non a 100%: correggila prima di eseguire.")
 
+# La finestra chiesta esce da quella coperta dagli strumenti attivi: si dice quale la
+# limita e si offre il rimedio in un clic. Il bottone sta qui, nel flusso normale, e non
+# dentro il tasto «Esegui»: dentro esisterebbe solo nel run in cui hai premuto Esegui, e
+# premendolo da solo non eseguirebbe nulla.
+if attivi and not orizzonte_auto:
+    _finestra = finestra_comune(attivi)
+    if _finestra:
+        _primo, _ultimo, _chi = _finestra[0].date(), _finestra[1].date(), _finestra[2]
+        _fuori_inizio = begin_date < _primo
+        _fuori_fine = end_date > _ultimo
+        if _fuori_inizio or _fuori_fine:
+            _quale = ("iniziale" if _fuori_inizio else "") + (" e " if _fuori_inizio and _fuori_fine else "") + \
+                     ("finale" if _fuori_fine else "")
+            st.error(
+                f"**{_chi}** ha dati dal **{_primo}** al **{_ultimo}**: la data {_quale} scelta "
+                f"({begin_date} – {end_date}) esce da lì, quindi il backtest non può partire."
+            )
+            if st.button(f"Restringi al {_primo} – {_ultimo}", key="restringi_finestra",
+                         help="Riporta inizio e fine dentro i giorni in cui TUTTI gli "
+                              "strumenti attivi hanno un prezzo."):
+                st.session_state["chiedi_finestra"] = (_primo, _ultimo)
+                st.rerun()
+
 if st.button("Esegui backtest", type="primary", width="stretch"):
     if not orizzonte_auto and begin_date >= end_date:
         st.error("La data iniziale deve precedere la data finale.")
@@ -254,23 +299,28 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
         commissioni = {asset: float(tabella.loc[asset, "Commissione (%)"]) / 100.0 for asset in attivi}
         costi_annui = {asset: float(tabella.loc[asset, "Costi annui (%)"]) / 100.0 for asset in attivi}
         aliquote = {asset: float(tabella.loc[asset, "Aliquota (%)"]) / 100.0 for asset in attivi}
-        with st.spinner("Esecuzione del backtest..."):
-            df_log, df_delta, summary = backtest(
-                initial_value=initial_value,
-                weights=weights,
-                begin_date=pd.Timestamp(begin_date) if begin_date is not None else None,
-                end_date=pd.Timestamp(end_date) if end_date is not None else None,
-                brokerage_fee_rate=commissioni,
-                rebalance_threshold=rebalance_pct / 100.0,
-                tax_rate=aliquote,
-                annual_costs_rate=costi_annui,
-                # Sharpe e Sortino con il cash a 3 mesi come tasso privo di rischio
-                # (issue #79). Con rf=0 il rapporto era sovrastimato: nel periodo
-                # 2010-2025 il cash ha reso in media 1,33% l'anno.
-                risk_free_rate="CASHX",
-                plot=False,
-                save_outputs=False,
-            )
+        try:
+            with st.spinner("Esecuzione del backtest..."):
+                df_log, df_delta, summary = backtest(
+                    initial_value=initial_value,
+                    weights=weights,
+                    begin_date=pd.Timestamp(begin_date) if begin_date is not None else None,
+                    end_date=pd.Timestamp(end_date) if end_date is not None else None,
+                    brokerage_fee_rate=commissioni,
+                    rebalance_threshold=rebalance_pct / 100.0,
+                    tax_rate=aliquote,
+                    annual_costs_rate=costi_annui,
+                    # Sharpe e Sortino con il cash a 3 mesi come tasso privo di rischio
+                    # (issue #79). Con rf=0 il rapporto era sovrastimato: nel periodo
+                    # 2010-2025 il cash ha reso in media 1,33% l'anno.
+                    risk_free_rate="CASHX",
+                    plot=False,
+                    save_outputs=False,
+                )
+        except ValueError as errore:
+            # Un errore del motore è un messaggio per chi usa l'app, non un traceback.
+            st.error(f"Il backtest non può partire: {errore}")
+            st.stop()
 
         # Tabella comparativa dei tre portafogli (issue #75).
         # Le metriche NON si ricalcolano qui: il motore le produce già per tutte e tre le
