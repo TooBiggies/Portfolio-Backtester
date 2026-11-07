@@ -24,7 +24,7 @@ APP = __file__.rsplit("/tests/", 1)[0] + "/streamlit_app.py"
 pytestmark = pytest.mark.ui
 
 PRESET = {
-    "Attuale (60/10/25/5)": {"VTSIM": 60, "GLDSIM": 10, "ZROZSIM": 25, "DBMFSIM": 5},
+    "Attuale": {"VTSIM": 60, "GLDSIM": 10, "IEFSIM": 20, "DBMFSIM": 10},
     "Classico 60/40": {"VTSIM": 60, "IEFSIM": 40},
     "Permanent Portfolio": {"VTSIM": 25, "TLTSIM": 25, "GLDSIM": 25, "CASHX": 25},
     "All weather": {"VTSIM": 30, "TLTSIM": 40, "IEFSIM": 15, "GLDSIM": 15},
@@ -67,7 +67,7 @@ def carica_preset(at, nome):
 
 def test_il_bottone_dei_preset_non_solleva_eccezioni():
     """La regressione esatta del #77: prima di questo fix il clic produceva un TypeError."""
-    at = carica_preset(avvia(), "Attuale (60/10/25/5)")
+    at = carica_preset(avvia(), "Attuale")
     assert not at.exception, [str(e.value) for e in at.exception]
 
 
@@ -143,3 +143,42 @@ def test_la_versione_della_tabella_avanza_a_ogni_riscrittura():
     carica_preset(at, "All weather")
     dopo = at.session_state["versione_tabella"]
     assert dopo == prima + 1, (prima, dopo)
+
+
+def test_il_preset_attuale_e_il_default_di_apertura():
+    """«Attuale» deve riportare la tabella ESATTAMENTE al portafoglio di apertura.
+    Prima erano due dizionari diversi: il preset caricava ZROZ al 25%, il default era
+    IEF al 20%, quindi premere "Attuale" cambiava il portafoglio invece di resettarlo."""
+    at = avvia()
+    prima = tabella(at)["Allocazione (%)"].astype(float)
+    tabella_at = tabella(at)
+    defaults = {a: float(tabella_at.loc[a, "Allocazione (%)"]) for a in tabella_at.index}
+
+    carica_preset(at, "All weather")          # si sporca il portafoglio
+    carica_preset(at, "Attuale")              # e si torna all'inizio
+    dopo = tabella(at)["Allocazione (%)"].astype(float)
+    for asset, peso in defaults.items():
+        assert float(dopo[asset]) == pytest.approx(peso), asset
+    assert prima.sum() == pytest.approx(dopo.sum())
+
+
+def test_la_composizione_e_scritta_con_i_nomi_degli_strumenti():
+    """Issue #85: «60/10/20/10» non dice a quale strumento corrisponde ogni percentuale.
+    Sotto la scelta del preset deve comparire la composizione per esteso."""
+    at = avvia()
+    at.selectbox[0].set_value("Attuale").run()
+    testi = " ".join(c.value for c in at.caption)
+    assert "60% VTSIM" in testi, testi
+    assert "20% IEFSIM" in testi, testi
+    assert "10% DBMFSIM" in testi, testi
+    # ogni percentuale accompagnata dal nome leggibile dello strumento
+    for nome in ("Azionario globale", "Treasury USA 7-10 anni", "Managed futures replicato"):
+        assert nome in testi, f"manca {nome}: {testi}"
+
+
+def test_la_composizione_cambia_col_preset_scelto():
+    at = avvia()
+    at.selectbox[0].set_value("Solo azionario globale").run()
+    testi = " ".join(c.value for c in at.caption)
+    assert "100% VTSIM" in testi, testi
+    assert "IEFSIM" not in testi.split(":")[-1], testi
