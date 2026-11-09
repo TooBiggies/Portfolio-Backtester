@@ -222,8 +222,10 @@ class Portfolio:
             - Increases holdings for the specified asset.
             - Updates asset cost basis (assets_costs).
         """
-        cost_basis = units * price
         fee = units * price * float(self.brokerage_fee_rate[asset])
+        # Il costo di carico comprende la commissione: e' quanto si e' pagato per unita',
+        # ed e' la base della plusvalenza (issue #87).
+        cost_basis = units * price + fee
 
         self.holdings[asset] += units
         self.assets_costs[asset] += cost_basis
@@ -243,6 +245,11 @@ class Portfolio:
         Returns:
             tuple: A tuple of (transaction_fee, capital_gains_tax).
 
+        La plusvalenza tassata e' ``quote x (prezzo - PMC) - commissione``: il PMC comprende
+        la commissione d'acquisto (vedi ``buy``) e la commissione di vendita riduce il
+        corrispettivo. Senza questo, l'imposta si calcolerebbe su un guadagno piu' grande
+        di quello vero (issue #87).
+
         Side Effects:
             - Decreases holdings for the specified asset.
             - Updates asset cost basis (assets_costs).
@@ -253,8 +260,9 @@ class Portfolio:
         units = min(units, self.holdings[asset])
         pmc = self._pmc(asset)
         rate = self.tax_rate_for(asset) if tax_rate is None else tax_rate
-        tax = max(0.0, units * (price - pmc)) * rate
         fee = units * price * float(self.brokerage_fee_rate[asset])
+        # Il corrispettivo e' al netto della commissione di vendita (issue #87).
+        tax = max(0.0, units * (price - pmc) - fee) * rate
 
         self.holdings[asset] -= units
         self.assets_costs[asset] -= units * pmc
