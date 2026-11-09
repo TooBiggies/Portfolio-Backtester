@@ -128,10 +128,14 @@ def test_cash_out_costs_non_modifica_il_portafoglio():
 
 def test_cash_out_costs_somma_commissioni_e_imposte():
     pf = nuovo_portafoglio({"A": 10.0}, fee=0.01, tax=0.26)
-    pf.buy(10.0, "A", 100)                     # costo 1000, PMC 10
-    pf.prices = pd.Series({"A": 20.0})         # controvalore 2000, guadagno 1000
+    pf.buy(10.0, "A", 100)                     # costo 1000, commissione d'ingresso 10
+    pf.prices = pd.Series({"A": 20.0})         # controvalore 2000
     uscita = pf.cash_out_costs()
-    assert uscita["A"] == pytest.approx(2000 * 0.01 + 1000 * 0.26)   # 20 + 260
+    # PMC 10,10 (la commissione d'ingresso fa parte del costo di carico): guadagno 990.
+    # La commissione d'uscita (20) riduce il corrispettivo: base imponibile 970, imposta
+    # 252,20. Totale 20 + 252,20. Prima del #87 erano 20 + 260 = 280, con il guadagno
+    # calcolato senza togliere le due commissioni.
+    assert uscita["A"] == pytest.approx(20.0 + 0.26 * (1000 - 10 - 20))   # 20 + 252,20 = 272,20
 
 
 def test_cash_out_costs_con_aliquota_zero_sono_solo_commissioni():
@@ -199,3 +203,31 @@ def test_rebalancer_a_target_esatto_non_genera_trade():
     _, _, trades = Rebalancer(pd.Series({"A": 0.5, "B": 0.5}), 0.0,
                               tax_rate=0.0).rebalance(pf)
     assert all(abs(v) < 1e-9 for v in trades.values())
+
+
+# --- commissioni e prezzo di carico (issue #87) ---------------------------
+
+def test_il_prezzo_di_carico_comprende_la_commissione_di_acquisto():
+    """100 quote a 10 con commissione 1%: si pagano 1.010, non 1.000, quindi PMC 10,10."""
+    pf = nuovo_portafoglio({"A": 10.0}, fee=0.01, tax=0.26)
+    fee = pf.buy(10.0, "A", 100)
+    assert fee == pytest.approx(10.0)
+    assert pf.assets_costs["A"] == pytest.approx(1010.0)      # 1000 + 10 di commissione
+    assert pf.pmc["A"] == pytest.approx(10.10)
+
+
+def test_vendere_al_prezzo_di_acquisto_non_genera_plusvalenza():
+    """Comprato e rivenduto allo stesso prezzo non c'e' guadagno: nemmeno con le commissioni."""
+    pf = nuovo_portafoglio({"A": 10.0}, fee=0.01, tax=0.26)
+    pf.buy(10.0, "A", 100)
+    _, imposta = pf.sell(10.0, "A", 100)
+    assert imposta == pytest.approx(0.0)
+
+
+def test_la_commissione_di_vendita_riduce_il_corrispettivo():
+    """Prezzo da 10 a 12 con fee 1%: base imponibile 200 - 12, non 200."""
+    pf = nuovo_portafoglio({"A": 10.0}, fee=0.01, tax=0.26)
+    pf.buy(10.0, "A", 100)                       # PMC 10,10
+    _, imposta = pf.sell(12.0, "A", 100)
+    imponibile = 100 * (12.0 - 10.10) - 100 * 12.0 * 0.01     # 190 - 12 = 178
+    assert imposta == pytest.approx(0.26 * imponibile)        # 46,28
