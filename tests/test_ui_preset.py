@@ -11,6 +11,7 @@ Qui si verifica, per ognuno dei sei preset: che la tabella si riempia, che il to
 quello di default (cioe' che serva un solo passaggio, non due).
 """
 import datetime as dt
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -20,7 +21,7 @@ from backtester import backtest
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
 
-APP = __file__.rsplit("/tests/", 1)[0] + "/streamlit_app.py"
+APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
 pytestmark = pytest.mark.ui
 
 PRESET = {
