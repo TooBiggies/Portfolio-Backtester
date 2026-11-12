@@ -11,6 +11,23 @@ st.set_page_config(page_title="Portfolio Backtester", page_icon="📈", layout="
 st.title("Portfolio Backtester")
 st.caption("Configura online asset allocation, periodo, costi, soglia di ribilanciamento e fiscalità.")
 
+# Perimetro dichiarato, in cima alla pagina e non in fondo: chiunque apra lo strumento deve
+# sapere cosa sta usando prima di digitare un numero. È anche la ragione per cui i portafogli
+# predefiniti sono stati rimossi: un'allocazione suggerita è una raccomandazione, e questa
+# pagina non è il posto dove darne.
+st.info(
+    "**Strumento didattico.** Calcola cosa sarebbe successo a un portafoglio che definisci tu, "
+    "sui dati storici di questo dataset. Non è consulenza in materia di investimenti, non valuta "
+    "l'adeguatezza di un prodotto rispetto a un profilo, non contiene raccomandazioni né "
+    "previsioni. I rendimenti passati non predicono quelli futuri: nessun risultato di questa "
+    "pagina è una garanzia. Nessuno strumento finanziario viene promosso o collocato qui."
+)
+st.caption(
+    "Limiti del calcolo: imposte applicate solo sugli utili realizzati al ribilanciamento "
+    "(le minusvalenze non sono compensate), valori in dollari statunitensi, serie con suffisso "
+    "SIM ricostruite e non strumenti negoziabili."
+)
+
 # Cosa sono i ticker del dataset: senza questo, "VTSIM" non dice niente a chi apre la pagina.
 ASSET_INFO = {
     "VTSIM":   ("Azionario globale", "Tutti i mercati sviluppati ed emergenti in un solo ETF (MSCI ACWI)."),
@@ -26,34 +43,11 @@ ASSET_INFO = {
     "DBMFSIM": ("Managed futures replicato", "Replica della performance media dei gestori CTA (indice SG CTA)."),
 }
 
-# Portafoglio che l'app carica all'apertura. Il preset "Attuale" legge DA QUI, non da una
-# copia: prima erano due dizionari separati e si erano gia' disallineati (il preset diceva
-# 60/10/25/5 con ZROZ al 25%, il default era 60/10/20/10 con IEF al 20%: caricare "Attuale"
-# cambiava il portafoglio invece di riportarlo all'inizio).
-DEFAULT_PESI = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
-
-# Portafogli pronti: approssimazioni costruite con gli asset disponibili nel dataset.
-# I nomi restano corti; la composizione la scrive `composizione_preset()` con i nomi degli
-# strumenti, perche' "60/10/20/10" non dice a quale strumento corrisponde ogni percentuale
-# (issue #85).
-PRESET = {
-    "Attuale": DEFAULT_PESI,
-    "Classico 60/40": {"VTSIM": 60.0, "IEFSIM": 40.0},
-    "Permanent Portfolio": {"VTSIM": 25.0, "TLTSIM": 25.0, "GLDSIM": 25.0, "CASHX": 25.0},
-    "All weather": {"VTSIM": 30.0, "TLTSIM": 40.0, "IEFSIM": 15.0, "GLDSIM": 15.0},
-    "Golden butterfly": {"VTSIM": 40.0, "TLTSIM": 20.0, "SHYSIM": 20.0, "GLDSIM": 20.0},
-    "Solo azionario globale": {"VTSIM": 100.0},
-}
-
-
-def composizione_preset(nome):
-    """«60% VTSIM (azionario globale) · 10% GLDSIM (oro fisico) · …» per il preset scelto."""
-    pezzi = []
-    for asset, peso in PRESET[nome].items():
-        if float(peso) > 0:
-            nome_leggibile = ASSET_INFO.get(asset, (asset, ""))[0]
-            pezzi.append(f"{float(peso):.0f}% {asset} ({nome_leggibile})")
-    return " · ".join(pezzi)
+# Portafogli predefiniti: rimossi. Erano sei costruzioni con un nome proprio («Classico
+# 60/40», «All weather», «Golden butterfly»…): agli occhi di un'autorità di vigilanza sono
+# portafogli modello, cioè la raccomandazione di un'allocazione a un pubblico indistinto.
+# Lo strumento resta un calcolatore: l'allocazione la scrive chi lo usa, e la tabella parte
+# da zero proprio perché non c'è nulla da suggerire.
 
 
 # Aliquote di partenza per strumento: 12,5% sui titoli di Stato white list (base ridotta al
@@ -70,12 +64,12 @@ def nuova_versione_tabella():
     st.session_state["versione_tabella"] = st.session_state.get("versione_tabella", 0) + 1
 
 
-def carica_preset(nome):
-    """Imposta le allocazioni del preset; gira PRIMA che la tabella esista (on_click)."""
+def azzera_allocazione():
+    """Riporta a zero le allocazioni: la tabella è dell'utente, l'app non propone pesi."""
     if CHIAVE_TABELLA not in st.session_state:
         return
     tabella = st.session_state[CHIAVE_TABELLA].copy()
-    tabella["Allocazione (%)"] = [int(PRESET[nome].get(asset, 0.0)) for asset in tabella.index]
+    tabella["Allocazione (%)"] = 0.0
     st.session_state[CHIAVE_TABELLA] = tabella
     nuova_versione_tabella()
 
@@ -203,23 +197,19 @@ with st.sidebar:
               help="Sovrascrive commissione, costi annui e aliquota di ogni riga con i tre "
                    "valori qui sopra. Le modifiche fatte a mano nella tabella vanno perse.")
 
-scelta_preset = st.selectbox("Portafoglio predefinito", list(PRESET),
-    help="Approssimazioni costruite con gli asset disponibili in questo dataset.")
-st.caption(f"Composizione di «{scelta_preset}»: {composizione_preset(scelta_preset)}")
-st.button("Carica il portafoglio predefinito", on_click=carica_preset,
-          args=(scelta_preset,), width="stretch",
-          help="Riscrive la colonna dell'allocazione con i pesi del portafoglio scelto.")
-defaults = DEFAULT_PESI
+st.button("Azzera le allocazioni", on_click=azzera_allocazione, width="stretch",
+          help="Riporta a zero la colonna «Allocazione (%)»: l'app non propone pesi, "
+               "li scrivi tu. Commissioni, costi e aliquote restano quelli impostati.")
 
-# Una sola tabella per strumento: allocazione e i tre costi (#73). I valori iniziali
-# vengono dai campi generali della barra laterale, tranne l'aliquota dei Treasury che parte
-# dal 12,5% di legge. La tabella vive in session_state perché i preset e il bottone
-# "applica a tutti" la riscrivono prima che il widget esista.
+# Una sola tabella per strumento: allocazione e i tre costi (#73). L'allocazione parte da
+# zero: l'app non suggerisce pesi. Costi e aliquote partono dai campi generali della barra
+# laterale, tranne l'aliquota dei Treasury che parte dal 12,5% di legge. La tabella vive in
+# session_state perché «azzera» e «applica a tutti» la riscrivono prima che il widget esista.
 if CHIAVE_TABELLA not in st.session_state:
     st.session_state[CHIAVE_TABELLA] = pd.DataFrame(
         {
             "Strumento": assets,
-            "Allocazione (%)": [float(defaults.get(asset, 0.0)) for asset in assets],
+            "Allocazione (%)": [0.0] * len(assets),
             "Commissione (%)": [float(brokerage_pct)] * len(assets),
             "Costi annui (%)": [float(annual_costs_pct)] * len(assets),
             "Aliquota (%)": [ALIQUOTA_SOVRANA if asset in STRUMENTI_SOVRANI else float(tax_pct)
