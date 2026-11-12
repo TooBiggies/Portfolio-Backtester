@@ -14,6 +14,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Installa ruff
+        # Versione fissata: se domani ruff aggiunge una regola alla famiglia F, la CI
+        # non deve diventare rossa da sola su un codice che nessuno ha toccato.
+        run: python -m pip install ruff==0.17.5
+
+      - name: ruff check
+        # L'insieme delle regole sta in pyproject.toml ([tool.ruff.lint]): qui non si
+        # ripetono, così locale e CI controllano la stessa cosa.
+        run: ruff check .
+
   pytest:
     name: pytest (${{ matrix.python-version }})
     runs-on: ubuntu-latest
