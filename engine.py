@@ -447,9 +447,10 @@ class PortfolioTracker:
         self.delta_log = []
         self.asset_columns = asset_columns  # Exact column order for Excel
 
-    def _update_compounds(self, portfolio, value_prop, label):
-
-        curr_value = getattr(portfolio, value_prop)
+    def _update_compounds(self, portfolio, value_prop, label, valore=None):
+        # `valore` permette a update() di passare un valore già calcolato: senza,
+        # ogni proprietà veniva ricalcolata una seconda e una terza volta per giorno.
+        curr_value = getattr(portfolio, value_prop) if valore is None else valore
         prev_value = self.prev_value[label]
 
         if prev_value is None:
@@ -465,34 +466,58 @@ class PortfolioTracker:
 
     def update(self, portfolio, date, gross_portfolio=None, taxes={}, costs={}, trade_deltas={}):
 
+        # Una volta al giorno, non sei: broker, costo di uscita, netto, PMC e costo di
+        # detenzione si calcolano da qui e si riusano sia per il compounding sia per la
+        # riga di log. Le proprietà del portafoglio restano quelle di prima (e restano
+        # disponibili per chi le usa fuori da qui): è cambiato solo quante volte le
+        # chiamiamo. Su 12.400 giorni questa ripetizione era la metà del tempo di una
+        # simulazione.
+        prezzi = portfolio.prices
+        valori_broker = portfolio.holdings * prezzi
+        valori_net = valori_broker - portfolio.cash_out_costs()
+        broker_totale = float(valori_broker.sum())
+        net_totale = float(valori_net.sum())
+
+        def _pmc_vettoriale():
+            # Stessa formula della proprietà pmc, senza il ciclo Python per asset.
+            h = portfolio.holdings.to_numpy(dtype=float)
+            c = portfolio.assets_costs.to_numpy(dtype=float)
+            return pd.Series(np.where(h > 0, c / np.where(h > 0, h, 1.0), 0.0), index=prezzi.index)
+
+        gross_valori = None
+        gross_totale = None
         if gross_portfolio is not None:
-            self._update_compounds(gross_portfolio, 'broker_assets_value', 'gross_assets_value')
-        self._update_compounds(portfolio, 'broker_assets_value', 'broker_assets_value')
-        self._update_compounds(portfolio, 'net_assets_value', 'net_assets_value')
+            gross_valori = gross_portfolio.holdings * gross_portfolio.prices
+            gross_totale = float(gross_valori.sum())
+            self._update_compounds(gross_portfolio, 'broker_assets_value', 'gross_assets_value',
+                                   valore=gross_totale)
+        self._update_compounds(portfolio, 'broker_assets_value', 'broker_assets_value', valore=broker_totale)
+        self._update_compounds(portfolio, 'net_assets_value', 'net_assets_value', valore=net_totale)
 
         # Build asset value row (align with expected columns)
-        get_per_asset = lambda x: getattr(portfolio, x).reindex(self.asset_columns, fill_value=0.0)
+        def _per_asset(serie):
+            return serie.reindex(self.asset_columns, fill_value=0.0)
 
-        prices_dict = {f"Price_{k}": v for k, v in get_per_asset('prices').to_dict().items()}
-        pmc_dict = {f"PMC_{k}": v for k, v in get_per_asset('pmc').to_dict().items()}
-        broker_dict = {f"Broker_{k}": v for k, v in get_per_asset('broker_assets_values').to_dict().items()}
-        net_dict = {f"Net_{k}": v for k, v in get_per_asset('net_assets_values').to_dict().items()}
-        costs_holding_dict = {f"HoldingCost_{k}": v for k, v in get_per_asset('daily_annual_costs').to_dict().items()}
+        prices_dict = {f"Price_{k}": v for k, v in _per_asset(prezzi).to_dict().items()}
+        pmc_dict = {f"PMC_{k}": v for k, v in _per_asset(_pmc_vettoriale()).to_dict().items()}
+        broker_dict = {f"Broker_{k}": v for k, v in _per_asset(valori_broker).to_dict().items()}
+        net_dict = {f"Net_{k}": v for k, v in _per_asset(valori_net).to_dict().items()}
+        costs_holding_dict = {f"HoldingCost_{k}": v
+                              for k, v in _per_asset(valori_broker * portfolio.ter).to_dict().items()}
 
         gross_dict = {}
         gross_value = None
         if gross_portfolio is not None:
-            get_gross = lambda x: getattr(gross_portfolio, x).reindex(self.asset_columns, fill_value=0.0)
-            gross_dict = {f"Gross_{k}": v for k, v in get_gross('broker_assets_values').to_dict().items()}
-            gross_value = gross_portfolio.broker_assets_value
+            gross_dict = {f"Gross_{k}": v for k, v in _per_asset(gross_valori).to_dict().items()}
+            gross_value = gross_totale
 
         taxes_dict = {f"Tax_{k}": v for k, v in taxes.items()}
         costs_trade_dict = {f"TradeCost_{k}": v for k, v in costs.items()}
 
         log_entry = {
             'Date': date,
-            'BrokerPortfolioValue': portfolio.broker_assets_value,
-            'Net': portfolio.net_assets_value,
+            'BrokerPortfolioValue': broker_totale,
+            'Net': net_totale,
             **prices_dict, **pmc_dict, **broker_dict, **net_dict, **costs_holding_dict,
             **taxes_dict, **costs_trade_dict,
         }
