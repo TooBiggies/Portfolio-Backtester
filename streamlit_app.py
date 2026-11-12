@@ -285,6 +285,18 @@ if orizzonte_auto and attivi:
 if attivi and total_weight != 100:
     st.warning(f"L'allocazione somma a {total_weight:.0f}% e non a 100%: correggila prima di eseguire.")
 
+# Orizzonte breve, dichiarato PRIMA di eseguire (issue #88). La finestra non si stima
+# dalle date scelte: si chiede al motore quale simulerebbe davvero con questi ingressi
+# (`anni_simulati` usa la stessa regola di `backtest()`), così l'avviso compare negli
+# stessi casi in cui il motore lo metterebbe nel riepilogo. Se il motore non sa ancora
+# calcolare la finestra (date invertite, strumenti senza prezzi) non c'è niente da dire:
+# ci pensa l'errore corrispondente.
+if attivi:
+    _anni_motore = anni_simulati(raw, list(attivi), begin_date, end_date)
+    _avviso_orizzonte = messaggio_orizzonte_breve(_anni_motore)
+    if _avviso_orizzonte:
+        st.warning(_avviso_orizzonte)
+
 # La finestra chiesta esce da quella coperta dagli strumenti attivi: si dice quale la
 # limita e si offre il rimedio in un clic. Il bottone sta qui, nel flusso normale, e non
 # dentro il tasto «Esegui»: dentro esisterebbe solo nel run in cui hai premuto Esegui, e
