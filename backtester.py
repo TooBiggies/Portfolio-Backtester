@@ -82,8 +82,8 @@ def serie_da_dataset(df, colonna, dates, date_column="Date"):
 
 def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0.,
              rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False,
-             save_outputs=True, risk_free_rate=0.0, data_path="./Timeseries.csv", gov_share=None,
-             bollo_rate=None):
+             save_outputs=True, risk_free_rate: float | str | pd.Series = 0.0, data_path="./Timeseries.csv",
+             gov_share=None, bollo_rate=None):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -112,6 +112,14 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
     tax_rate : float, optional, default=0.26
         Capital gains tax rate applied on realized gains during rebalancing.
+
+    risk_free_rate : float | str | pd.Series, optional, default=0.0
+        Tasso privo di rischio per Sharpe e Sortino. Uno scalare annuo (0.02 = 2%),
+        una Series di rendimenti giornalieri già allineata alle date, oppure il nome
+        di una colonna del dataset (tipicamente ``"CASHX"``): in quest'ultimo caso si
+        usa il rendimento giornaliero della colonna, e il tasso varia nel tempo.
+        Con 0.0 i due rapporti sono più alti e non confrontabili fra periodi con
+        tassi diversi (vedi issue #79).
 
     Returns
     -------
@@ -290,7 +298,6 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     print(f"CAGR  (broker)   {(tracker.compound_factor['broker_assets_value']**(1/years) - 1) * 100:.2f}%")
     print(f"CAGR  (net)      {(tracker.compound_factor['net_assets_value']**(1/years) - 1) * 100:.2f}%")
 
-    print(tracker.compound_factor['net_assets_value'])
     print(f"Total compound return (gross)  {tracker.compound_factor['gross_assets_value'] * 100:.2f}%")
     print(f"Total compound return (broker) {tracker.compound_factor['broker_assets_value'] * 100:.2f}%")
     print(f"Total compound return (net)    {tracker.compound_factor['net_assets_value'] * 100:.2f}%")
@@ -375,4 +382,8 @@ if __name__ == "__main__":
         brokerage_fee_rate=0.0029,
         rebalance_threshold=0.1,
         tax_rate=0.26,
+        # Lo stesso tasso dell'app (issue #79): con rf=0 questo entry point
+        # stampava uno Sharpe più alto di quello mostrato dall'interfaccia
+        # sulla stessa simulazione.
+        risk_free_rate="CASHX",
     )
