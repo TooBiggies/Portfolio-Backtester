@@ -76,10 +76,14 @@ def test_valori_finali_coincidono_con_l_ultima_riga_del_log():
 
 
 def test_gli_anni_sono_quelli_effettivamente_simulati():
-    """Se la serie parte dopo la data richiesta, gli anni sono quelli dei dati."""
+    """Se la serie parte dopo la data richiesta, gli anni sono quelli dei dati.
+
+    Dal #88 il confronto e' sul valore esatto e non piu' su `round(..., 2)`: gli anni
+    sono l'esponente del CAGR, quindi arrotondarli cambia il risultato (2,9925 -> 2,99).
+    """
     risultati, _, s = esegui(tax_rate=0.26, **PERIODO, **COSTI)
-    atteso = round((risultati.index[-1] - risultati.index[0]).days / 365.25, 2)
-    assert s["years"] == pytest.approx(atteso)
+    atteso = (risultati.index[-1] - risultati.index[0]).days / 365.25
+    assert s["years"] == pytest.approx(atteso, abs=1e-12)
 
 
 def test_cagr_coerente_col_valore_finale():

@@ -4,7 +4,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from backtester import backtest
+from backtester import (ANNI_MINIMI_AFFIDABILI, anni_simulati, backtest,
+                        finestra_simulata, messaggio_orizzonte_breve)
 
 st.set_page_config(page_title="Portfolio Backtester", page_icon="📈", layout="wide")
 st.title("Portfolio Backtester")
@@ -267,11 +268,13 @@ if not attivi:
 
 st.metric("Totale allocazione", f"{total_weight:.0f}%")
 
+finestra_anni = None
 if orizzonte_auto and attivi:
     finestra = finestra_comune(attivi)
     if finestra:
         inizio, fine, chi = finestra
         anni = (fine - inizio).days / 365.25
+        finestra_anni = anni
         st.caption(
             f"Orizzonte automatico: dal **{inizio.date()}** al **{fine.date()}** "
             f"({anni:.1f} anni). L'inizio lo decide **{chi}**, lo strumento che parte più "
