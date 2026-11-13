@@ -153,9 +153,18 @@ def finestra_comune(attivi):
 
 
 def to_excel_bytes(df_log, df_delta):
+    """Excel dei risultati, senza le serie di prezzo.
+
+    L'export serve a mostrare la storia del portafoglio — valori, ribilanciamenti,
+    imposte — non a ridistribuire i dati di mercato. Le colonne `Price_*` e `PMC_*`
+    restano nel log interno (servono all'interfaccia e alle verifiche), ma non escono
+    dal file scaricabile: sono anche la parte che pesa, perché sono una colonna per
+    ogni giorno di borsa per ogni asset.
+    """
+    colonne = [c for c in df_log.columns if not c.startswith(("Price_", "PMC_"))]
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df_log.to_excel(writer, sheet_name="Portfolio")
+        df_log[colonne].to_excel(writer, sheet_name="Portfolio")
         df_delta.to_excel(writer, sheet_name="Rebalancing")
     return buffer.getvalue()
 
