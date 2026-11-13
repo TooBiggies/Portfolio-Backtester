@@ -14,6 +14,8 @@ import datetime as dt
 import pandas as pd
 import pytest
 
+from conftest import imposta_allocazione
+
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
 
@@ -21,9 +23,14 @@ APP = __file__.rsplit("/tests/", 1)[0] + "/streamlit_app.py"
 pytestmark = pytest.mark.ui
 
 
-def avvia():
+ALLOCAZIONE_PROVA = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
+
+
+def avvia(con_allocazione=True):
     at = AppTest.from_file(APP, default_timeout=180)
     at.run()
+    if con_allocazione:
+        imposta_allocazione(at, ALLOCAZIONE_PROVA)
     return at
 
 
@@ -68,8 +75,7 @@ def test_la_finestra_comune_dipende_dagli_strumenti_scelti():
     """Con il solo azionario globale la storia comune arriva al 1969: la finestra automatica
     non è una costante dell'applicazione, è una proprietà del portafoglio."""
     at = avvia()
-    at.selectbox[0].set_value("Solo azionario globale").run()
-    bottone(at, "Carica il portafoglio predefinito").click().run()
+    imposta_allocazione(at, {"VTSIM": 100.0})      # solo azionario globale
     at.checkbox[0].set_value(True).run()
     bottone(at, "Esegui backtest").click().run()
     inizio, _ = data_usata(at)

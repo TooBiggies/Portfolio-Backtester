@@ -13,6 +13,8 @@ import datetime as dt
 
 import pytest
 
+from conftest import imposta_allocazione
+
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
 
@@ -20,9 +22,14 @@ APP = __file__.rsplit("/tests/", 1)[0] + "/streamlit_app.py"
 pytestmark = pytest.mark.ui
 
 
-def avvia():
+ALLOCAZIONE_PROVA = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
+
+
+def avvia(con_allocazione=True):
     at = AppTest.from_file(APP, default_timeout=180)
     at.run()
+    if con_allocazione:
+        imposta_allocazione(at, ALLOCAZIONE_PROVA)
     return at
 
 
@@ -90,8 +97,7 @@ def test_il_bottone_riporta_le_date_dentro_e_il_backtest_parte():
 def test_la_finestra_segue_gli_strumenti_attivi():
     """Togliendo il managed futures (che parte nel 2000) l'inizio utile va al 1969."""
     at = avvia()
-    at.selectbox[0].set_value("Solo azionario globale").run()
-    bottone(at, "Carica il portafoglio predefinito").click().run()
+    imposta_allocazione(at, {"VTSIM": 100.0})      # solo azionario globale
     at.date_input[0].set_value(dt.date(1969, 12, 31)).run()
     # con il solo azionario globale il 1969 è coperto: nessun errore
     assert errori(at) == ""

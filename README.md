@@ -41,6 +41,37 @@ La somma dei pesi degli asset deve essere pari al `100%`.
 
 Dopo aver impostato i parametri, cliccare su **Esegui backtest**.
 
+## Perimetro editoriale
+
+Questo strumento **calcola**, non consiglia. La distinzione è il motivo per cui l'app è
+fatta così com'è.
+
+**Cosa fa:** applica una sequenza di regole deterministiche (allocazione, ribilanciamenti,
+commissioni, costi annui, imposte) a una serie storica di prezzi, e mostra cosa sarebbe
+successo. Niente di più.
+
+**Cosa non fa, e non deve fare:**
+
+- non propone allocazioni. I portafogli predefiniti con un nome proprio — «Classico 60/40»,
+  «All weather», «Golden butterfly» e simili — sono stati **rimossi**: per un'autorità di
+  vigilanza un'allocazione suggerita con un nome è un portafoglio modello, cioè una
+  raccomandazione rivolta a un pubblico indistinto. La tabella parte da zero e i pesi li
+  scrive chi usa lo strumento;
+- non valuta l'adeguatezza di un prodotto rispetto a un profilo, un'esigenza o una
+  situazione patrimoniale;
+- non fa previsioni e non produce segnali di acquisto o vendita;
+- non nomina prodotti negoziabili: le serie con suffisso `SIM` sono ricostruzioni, non
+  strumenti che qualcuno può comprare;
+- non raccoglie dati personali: non c'è login, non c'è profilazione, e l'elaborazione
+  avviene nella sessione del visitatore.
+
+**Limiti del calcolo, dichiarati:** le imposte sono applicate solo sugli utili realizzati
+al ribilanciamento e le minusvalenze non sono compensate (issue #89); i valori sono in
+dollari statunitensi; il rendimento passato non predice quello futuro.
+
+Chi usa questo strumento per decidere come impiegare il proprio denaro lo sta usando come
+calcolatrice, non come consulente: la responsabilità della scelta resta sua.
+
 ## Risultati
 
 Al termine dell'elaborazione, l'applicazione mostra:
