@@ -110,9 +110,23 @@ def applica_valori_globali():
 
 
 DATA_FILE = Path(__file__).with_name("Timeseries.csv")
-raw = pd.read_csv(DATA_FILE, sep=";")
-raw["Date"] = pd.to_datetime(raw["Date"], dayfirst=True, errors="coerce")
-raw = raw.dropna(subset=["Date"])
+
+
+@st.cache_data(show_spinner=False)
+def carica_storico(percorso: str, versione: float) -> pd.DataFrame:
+    """CSV dei prezzi, letto una volta per file.
+
+    `versione` è la data di modifica del file: se cambia, la cache si invalida. Serve
+    perché Streamlit riesegue lo script dall'inizio a ogni interazione, e senza cache
+    ogni clic di ogni visitatore rileggeva 1,4 MB di serie. In locale non si nota; con
+    più persone sulla stessa istanza sì.
+    """
+    dati = pd.read_csv(percorso, sep=";")
+    dati["Date"] = pd.to_datetime(dati["Date"], dayfirst=True, errors="coerce")
+    return dati.dropna(subset=["Date"])
+
+
+raw = carica_storico(str(DATA_FILE), DATA_FILE.stat().st_mtime)
 assets = [c for c in raw.columns if c != "Date"]
 min_date = raw["Date"].min().date()
 max_date = raw["Date"].max().date()
@@ -139,11 +153,48 @@ def finestra_comune(attivi):
 
 
 def to_excel_bytes(df_log, df_delta):
+    """Excel dei risultati, senza le serie di prezzo.
+
+    L'export serve a mostrare la storia del portafoglio — valori, ribilanciamenti,
+    imposte — non a ridistribuire i dati di mercato. Le colonne `Price_*` e `PMC_*`
+    restano nel log interno (servono all'interfaccia e alle verifiche), ma non escono
+    dal file scaricabile: sono anche la parte che pesa, perché sono una colonna per
+    ogni giorno di borsa per ogni asset.
+    """
+    colonne = [c for c in df_log.columns if not c.startswith(("Price_", "PMC_"))]
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df_log.to_excel(writer, sheet_name="Portfolio")
+        df_log[colonne].to_excel(writer, sheet_name="Portfolio")
         df_delta.to_excel(writer, sheet_name="Rebalancing")
     return buffer.getvalue()
+
+
+@st.cache_data(show_spinner=False, max_entries=2)
+def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, costi_annui,
+                    aliquote, soglia_ribilanciamento):
+    """Il backtest, memorizzato per combinazione di parametri.
+
+    È la parte lenta (12-40 secondi su venticinque anni). Senza cache due visitatori con
+    gli stessi input pagavano due volte la stessa simulazione, su un'istanza che ha un
+    core solo. `max_entries=2` perché ogni voce contiene il log giornaliero per asset:
+    tenerne quattro in memoria non serve e su Streamlit Community Cloud (1 GB) pesa.
+    """
+    return backtest(
+        initial_value=initial_value,
+        weights=weights,
+        begin_date=begin_date,
+        end_date=end_date,
+        brokerage_fee_rate=commissioni,
+        rebalance_threshold=soglia_ribilanciamento,
+        tax_rate=aliquote,
+        annual_costs_rate=costi_annui,
+        # Sharpe e Sortino con il cash a 3 mesi come tasso privo di rischio
+        # (issue #79). Con rf=0 il rapporto era sovrastimato: nel periodo
+        # 2010-2025 il cash ha reso in media 1,33% l'anno.
+        risk_free_rate="CASHX",
+        plot=False,
+        save_outputs=False,
+    )
 
 with st.sidebar:
     st.header("Parametri")
@@ -324,21 +375,15 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
         aliquote = {asset: float(tabella.loc[asset, "Aliquota (%)"]) / 100.0 for asset in attivi}
         try:
             with st.spinner("Esecuzione del backtest..."):
-                df_log, df_delta, summary = backtest(
+                df_log, df_delta, summary = esegui_backtest(
                     initial_value=initial_value,
                     weights=weights,
                     begin_date=pd.Timestamp(begin_date) if begin_date is not None else None,
                     end_date=pd.Timestamp(end_date) if end_date is not None else None,
-                    brokerage_fee_rate=commissioni,
-                    rebalance_threshold=rebalance_pct / 100.0,
-                    tax_rate=aliquote,
-                    annual_costs_rate=costi_annui,
-                    # Sharpe e Sortino con il cash a 3 mesi come tasso privo di rischio
-                    # (issue #79). Con rf=0 il rapporto era sovrastimato: nel periodo
-                    # 2010-2025 il cash ha reso in media 1,33% l'anno.
-                    risk_free_rate="CASHX",
-                    plot=False,
-                    save_outputs=False,
+                    commissioni=commissioni,
+                    costi_annui=costi_annui,
+                    aliquote=aliquote,
+                    soglia_ribilanciamento=rebalance_pct / 100.0,
                 )
         except ValueError as errore:
             # Un errore del motore è un messaggio per chi usa l'app, non un traceback.

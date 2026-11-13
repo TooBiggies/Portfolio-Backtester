@@ -41,6 +41,39 @@ La somma dei pesi degli asset deve essere pari al `100%`.
 
 Dopo aver impostato i parametri, cliccare su **Esegui backtest**.
 
+## Pubblicare l'app su Streamlit Community Cloud
+
+L'app è pronta per essere pubblicata gratuitamente, senza server da gestire:
+
+1. Accedere a [share.streamlit.io](https://share.streamlit.io) con l'account GitHub.
+2. **New app** → repository `TooBiggies/Portfolio-Backtester`.
+3. **Branch: `develop`** (non `main`: contiene solo il README) e **Main file path: `streamlit_app.py`**.
+4. **Deploy**.
+
+Cosa aspettarsi dal piano gratuito:
+
+- **1 GB di RAM e un core condiviso.** Due simulazioni insieme si mettono in coda: il
+  backtest su venticinque anni impiega da 12 a 40 secondi.
+- **L'app va in sleep dopo un periodo di inattività** e si risveglia al primo visitatore,
+  con qualche secondo di attesa.
+- **Nessun dato persistente:** ogni riavvio riparte dal CSV nel repository.
+- La cache è già configurata: lo storico dei prezzi si legge una volta per file e il
+  risultato di una simulazione viene riusato per la stessa combinazione di parametri.
+
+Due cose da verificare al primo deploy:
+
+- **Versione di Python.** `pyproject.toml` dichiara `>=3.14`; la piattaforma potrebbe
+  offrire solo 3.13. Il codice non usa nulla di specifico della 3.14, quindi dovrebbe
+  funzionare: se l'installazione fallisce, il primo sospetto è la versione selezionata
+  nelle impostazioni dell'app.
+- **`requirements.txt` è un freeze generato su macOS.** Contiene alcuni pacchetti che
+  servono solo lì (per esempio `appnope`). Se l'installazione su Linux si blocca, il set
+  minimo che serve davvero è questo:
+
+```bash
+pandas numpy matplotlib openpyxl streamlit
+```
+
 ## Risultati
 
 Al termine dell'elaborazione, l'applicazione mostra:
