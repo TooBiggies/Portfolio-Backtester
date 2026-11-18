@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import imposta_allocazione
+
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
 
@@ -24,10 +26,17 @@ pytestmark = pytest.mark.ui
 
 ASSET = ["VTSIM", "GLDSIM", "ZROZSIM", "DBMFSIM"]
 
+# La tabella parte da zero (l'app non propone pesi): i test che devono far girare il
+# motore dichiarano la propria allocazione. È la stessa composizione usata prima come
+# default, ma qui è un dato del test, non un suggerimento dell'app.
+ALLOCAZIONE_PROVA = {"VTSIM": 60.0, "GLDSIM": 10.0, "ZROZSIM": 25.0, "DBMFSIM": 5.0}
 
-def avvia():
+
+def avvia(con_allocazione=True):
     at = AppTest.from_file(str(APP), default_timeout=60)
     at.run()
+    if con_allocazione:
+        imposta_allocazione(at, ALLOCAZIONE_PROVA)
     return at
 
 
@@ -132,11 +141,12 @@ def test_le_celle_per_asset_partono_dai_valori_globali():
         assert abs(float(tabella.loc[asset, "Aliquota (%)"]) - aliquota) < 1e-9, asset
 
 
-def test_l_allocazione_di_default_somma_a_cento_ed_e_intera():
-    at = avvia()
-    assert metrica(at, "Totale allocazione") == "100%"
+def test_la_tabella_parte_da_zero_allocazione():
+    """L'app non propone pesi: si apre con zero e i pesi li scrive chi la usa."""
+    at = avvia(con_allocazione=False)
+    assert metrica(at, "Totale allocazione") == "0%"
     allocazione = tabella_asset(at)["Allocazione (%)"]
-    assert (allocazione == allocazione.astype(int)).all(), "le allocazioni hanno decimali"
+    assert (allocazione == 0).all(), "la tabella non parte da zero"
 
 
 def test_cambiare_un_peso_aggiorna_il_totale():
