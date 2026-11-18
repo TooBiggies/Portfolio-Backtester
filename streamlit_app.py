@@ -170,7 +170,7 @@ def to_excel_bytes(df_log, df_delta):
 
 @st.cache_data(show_spinner=False, max_entries=2)
 def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, costi_annui,
-                    aliquote, soglia_ribilanciamento):
+                    aliquote, soglia_ribilanciamento, soglia_ribilanciamento_relativa=None):
     """Il backtest, memorizzato per combinazione di parametri.
 
     È la parte lenta (12-40 secondi su venticinque anni). Senza cache due visitatori con
@@ -185,6 +185,7 @@ def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, c
         end_date=end_date,
         brokerage_fee_rate=commissioni,
         rebalance_threshold=soglia_ribilanciamento,
+        rel_rebalance_threshold=soglia_ribilanciamento_relativa,
         tax_rate=aliquote,
         annual_costs_rate=costi_annui,
         # Sharpe e Sortino con il cash a 3 mesi come tasso privo di rischio
@@ -248,6 +249,12 @@ with st.sidebar:
         help="26% sui guadagni ordinari, 12,5% sui titoli di Stato white list. Il valore "
              "precompilato per ogni strumento si può cambiare nella tabella.")
     rebalance_pct = st.number_input("Soglia di ribilanciamento assoluta (%)", min_value=0.1, max_value=100.0, value=5.0, step=0.5)
+    rel_rebalance_pct = st.number_input(
+        "Soglia di ribilanciamento relativa (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0,
+        help="Scostamento in percentuale del peso obiettivo di ciascuno strumento. Il "
+             "ribilanciamento scatta quando lo scostamento supera la soglia assoluta "
+             "OPPURE questa (OR): a 50%, un comparto al 5% viene riportato a target "
+             "quando arriva al 7,5%, invece di dover arrivare al 15%. 0 = disattivata.")
     st.button("Applica i valori globali a tutti gli strumenti", on_click=applica_valori_globali,
               width="stretch",
               help="Sovrascrive commissione, costi annui e aliquota di ogni riga con i tre "
@@ -395,6 +402,9 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
                     costi_annui=costi_annui,
                     aliquote=aliquote,
                     soglia_ribilanciamento=rebalance_pct / 100.0,
+                    # Soglia relativa in OR con quella assoluta: un comparto piccolo
+                    # viene riportato a target prima di dover raddoppiare. 0 = spenta.
+                    soglia_ribilanciamento_relativa=(rel_rebalance_pct / 100.0) if rel_rebalance_pct > 0 else None,
                 )
         except ValueError as errore:
             # Un errore del motore è un messaggio per chi usa l'app, non un traceback.

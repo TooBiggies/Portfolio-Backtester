@@ -12,7 +12,8 @@ def run_portfolio_evolution(df_prices: pd.DataFrame,
                             rebalance_threshold: float,
                             tax_rate: float = 0.26,
                             brokerage_fee_rate: float = 0.0,
-                            asset_columns: list = None):
+                            asset_columns: list = None,
+                            rel_rebalance_threshold: float = None):
     """
     Runs the portfolio evolution through time and returns df_log and df_log_delta.
     
@@ -49,7 +50,8 @@ def run_portfolio_evolution(df_prices: pd.DataFrame,
     tracker = PortfolioTracker(asset_columns=asset_columns)
     rebalancer = Rebalancer(target_weights=pd.Series(initial_weights), 
                            threshold=rebalance_threshold, 
-                           tax_rate=tax_rate)
+                           tax_rate=tax_rate,
+                           rel_threshold=rel_rebalance_threshold)
     
     # Cumulative costs (to match original ptf.tax and ptf.TransactionalCost behavior)
     cumulative_tax = 0.0
