@@ -10,6 +10,7 @@ Due difetti in uno, e il secondo e' quello che l'utente legge.
    dichiarata — nel motore, nel riepilogo e nell'interfaccia.
 """
 import warnings
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -17,7 +18,7 @@ import pytest
 from backtester import (ANNI_MINIMI_AFFIDABILI, anni_simulati, backtest,
                         messaggio_orizzonte_breve)
 
-DATASET = __file__.rsplit("/tests/", 1)[0] + "/Timeseries.csv"
+DATASET = str(Path(__file__).resolve().parent.parent / "Timeseries.csv")
 
 
 def sintetico(prezzi, inizio="2020-01-01"):
@@ -100,7 +101,7 @@ def test_un_orizzonte_breve_non_viene_impedito():
 
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
-APP = __file__.rsplit("/tests/", 1)[0] + "/streamlit_app.py"
+APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
 
 
 def avvia():

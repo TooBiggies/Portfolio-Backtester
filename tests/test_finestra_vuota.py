@@ -5,12 +5,14 @@ date tutte prima dei dati, tutte dopo, un solo giorno non di borsa, date inverti
 Prima di questa correzione usciva `IndexError: single positional indexer is out-of-bounds`
 da `prices.iloc[0]`, che nell'app arrivava come traceback.
 """
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
 from backtester import backtest
 
-DATASET = __file__.rsplit("/tests/", 1)[0] + "/Timeseries.csv"
+DATASET = str(Path(__file__).resolve().parent.parent / "Timeseries.csv")
 PESI = {"VTSIM": 0.6, "GLDSIM": 0.1, "IEFSIM": 0.2, "DBMFSIM": 0.1}
 
 

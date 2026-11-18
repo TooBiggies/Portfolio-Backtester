@@ -10,13 +10,14 @@ scelto. Qui si verificano le tre cose che l'app fa al posto di cambiare widget:
    e dopo il clic il backtest parte.
 """
 import datetime as dt
+from pathlib import Path
 
 import pytest
 
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
 
-APP = __file__.rsplit("/tests/", 1)[0] + "/streamlit_app.py"
+APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
 pytestmark = pytest.mark.ui
 
 
