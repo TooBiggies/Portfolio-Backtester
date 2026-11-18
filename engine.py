@@ -311,7 +311,7 @@ class Rebalancer:
         tax_rate (float): The capital gains tax rate applied to profitable sales (default 0.26).
     """
 
-    def __init__(self, target_weights, threshold, tax_rate=0.26):
+    def __init__(self, target_weights, threshold, tax_rate=0.26, rel_threshold=None):
         """
         Initializes the Rebalancer with target configuration.
 
@@ -319,12 +319,17 @@ class Rebalancer:
             target_weights (pd.Series or dict): Mapping of asset names to target weights (0.0 to 1.0).
             threshold (float): Rebalancing trigger threshold (e.g., 0.05 for 5% deviation).
             tax_rate (float, optional): Capital gains tax rate. Defaults to 0.26.
+            rel_threshold (float, optional): Soglia relativa, espressa come frazione del
+                peso obiettivo (0.5 = 50% del peso). Se valorizzata, il ribilanciamento
+                scatta quando lo scostamento supera la soglia assoluta **oppure** quella
+                relativa (OR). Con None si usa la sola soglia assoluta, come prima.
         """
         # La docstring dichiara 'pd.Series or dict': normalizziamo a Series, che e'
         # l'unico tipo con cui funzionano la sottrazione e l'allineamento per asset.
         self.target_weights = (target_weights if isinstance(target_weights, pd.Series)
                                else pd.Series(target_weights))
         self.threshold = threshold
+        self.rel_threshold = rel_threshold
         self.tax_rate = tax_rate
 
     def rebalance(self, portfolio) -> tuple[dict, dict, dict]:
@@ -349,7 +354,20 @@ class Rebalancer:
 
         delta = self.target_weights - portfolio.weights
 
-        if not np.any(np.abs(delta) > self.threshold):
+        # Soglia assoluta: scostamento in punti di peso. Vale per tutti gli asset.
+        triggers = np.abs(delta) > self.threshold
+
+        # Soglia relativa (opzionale): scostamento in percentuale del proprio peso
+        # obiettivo. In OR con quella assoluta, cosi' un comparto piccolo (5% di oro)
+        # non deve triplicare prima di essere riportato a target. Gli asset con peso
+        # obiettivo nullo non hanno denominatore: restano affidati alla sola soglia
+        # assoluta e non producono divisioni per zero.
+        if self.rel_threshold is not None:
+            base = self.target_weights.where(self.target_weights > 0)
+            rel_triggers = (np.abs(delta) / base) > self.rel_threshold
+            triggers = triggers | rel_triggers.fillna(False)
+
+        if not triggers.any():
             return {asset: 0.0 for asset in portfolio.assets}, {asset: 0.0 for asset in portfolio.assets}, {asset: 0.0 for asset in portfolio.assets}
 
         V = portfolio.broker_assets_value

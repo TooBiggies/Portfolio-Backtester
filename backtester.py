@@ -135,7 +135,7 @@ def anni_simulati(dati, asset_columns, begin_date=None, end_date=None):
 def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0.,
              rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False,
              save_outputs=True, risk_free_rate: float | str | pd.Series = 0.0, data_path="./Timeseries.csv",
-             gov_share=None, bollo_rate=None):
+             gov_share=None, bollo_rate=None, rel_rebalance_threshold=None):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -161,6 +161,12 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     rebalance_threshold : float, optional, default=0.1
         Maximum deviation from target weights before triggering a rebalance.
         Example: 0.1 triggers a rebalance if an asset weight differs by ±10% from its target.
+
+    rel_rebalance_threshold : float, optional, default=None
+        Soglia relativa, frazione del peso obiettivo (0.5 = 50% del peso dell'asset).
+        Se valorizzata, il ribilanciamento scatta quando lo scostamento supera la soglia
+        assoluta **oppure** quella relativa (OR). Con None si usa la sola soglia assoluta:
+        i risultati restano identici a prima.
 
     tax_rate : float, optional, default=0.26
         Capital gains tax rate applied on realized gains during rebalancing.
@@ -281,7 +287,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         prices=initial_prices, value=initial_value,
         weights=weights, brokerage_fee_rate=0., annual_costs_rate=0., tax_rate=0., gov_share=None)
     ideal_rebalancer = Rebalancer(
-        target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=0.)
+        target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=0.,
+        rel_threshold=rel_rebalance_threshold)
 
     # Real portfolio
     real_pf, fees = Portfolio.from_weights(
@@ -290,7 +297,8 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         annual_costs_rate=annual_costs_rate, tax_rate=tax_rate, gov_share=gov_share,
         bollo_rate=bollo_rate)
     real_rebalancer = Rebalancer(
-        target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate)
+        target_weights=pd.Series(weights), threshold=rebalance_threshold, tax_rate=tax_rate,
+        rel_threshold=rel_rebalance_threshold)
 
     # Log initial state (t=0)
     tracker.update(real_pf, dates[0], gross_portfolio=ideal_pf,
