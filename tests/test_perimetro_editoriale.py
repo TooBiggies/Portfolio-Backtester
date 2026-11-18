@@ -21,12 +21,15 @@ sorgente = (RADICE / "streamlit_app.py").read_text(encoding="utf-8")
 codice = "\n".join(riga for riga in sorgente.splitlines()
                    if not riga.lstrip().startswith("#"))
 
+from conftest import imposta_orizzonte_automatico
+
 pytestmark = pytest.mark.ui
 
 
 def avvia():
     at = AppTest.from_file(APP, default_timeout=180)
     at.run()
+    imposta_orizzonte_automatico(at, False)
     return at
 
 

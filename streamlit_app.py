@@ -194,7 +194,7 @@ with st.sidebar:
     st.header("Parametri")
     initial_value = st.number_input("Capitale iniziale ($)", min_value=100.0, value=10_000.0, step=1_000.0)
     orizzonte_auto = st.checkbox(
-        "Orizzonte automatico", value=False, key="orizzonte_auto",
+        "Orizzonte automatico", value=True, key="orizzonte_auto",
         help="Usa la finestra più lunga in cui TUTTI gli strumenti scelti hanno un prezzo: "
              "l'inizio è la più recente fra le date di partenza degli strumenti, la fine è "
              "l'ultima data disponibile. Non serve per la volatilità di un singolo strumento: "
@@ -242,13 +242,19 @@ with st.sidebar:
         key="glob_aliquota", on_change=applica_colonna("Aliquota (%)", "glob_aliquota"),
         help="26% sui guadagni ordinari, 12,5% sui titoli di Stato white list. Il valore "
              "precompilato per ogni strumento si può cambiare nella tabella.")
-    rebalance_pct = st.number_input("Soglia di ribilanciamento assoluta (%)", min_value=0.1, max_value=100.0, value=5.0, step=0.5)
+    rebalance_pct = st.number_input(
+        "Soglia di ribilanciamento assoluta (%)", min_value=0.1, max_value=100.0, value=5.0, step=0.5,
+        help="Scostamento misurato in punti di peso. Con 5%, un comparto al 50% viene "
+             "riportato a target quando arriva al 55% o scende al 45%. Il ribilanciamento "
+             "scatta quando lo scostamento supera QUESTO valore oppure la soglia "
+             "relativa: basta che una delle due sia superata.")
     rel_rebalance_pct = st.number_input(
-        "Soglia di ribilanciamento relativa (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0,
-        help="Scostamento in percentuale del peso obiettivo di ciascuno strumento. Il "
-             "ribilanciamento scatta quando lo scostamento supera la soglia assoluta "
-             "OPPURE questa (OR): a 50%, un comparto al 5% viene riportato a target "
-             "quando arriva al 7,5%, invece di dover arrivare al 15%. 0 = disattivata.")
+        "Soglia di ribilanciamento relativa (%)", min_value=0.0, max_value=100.0, value=20.0, step=1.0,
+        help="Scostamento misurato in percentuale del peso obiettivo di ciascuno "
+             "strumento. Con 20%, un comparto al 5% viene riportato a target quando "
+             "arriva al 6% o scende al 4%. Il ribilanciamento scatta quando lo "
+             "scostamento supera QUESTA percentuale oppure la soglia assoluta: basta "
+             "che una delle due sia superata. 0 = soglia relativa disattivata.")
     st.button("Applica i valori globali a tutti gli strumenti", on_click=applica_valori_globali,
               width="stretch",
               help="Sovrascrive commissione, costi annui e aliquota di ogni riga con i tre "

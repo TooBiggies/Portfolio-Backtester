@@ -107,6 +107,7 @@ APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
 def avvia():
     at = AppTest.from_file(APP, default_timeout=180)
     at.run()
+    imposta_orizzonte_automatico(at, False)
     return at
 
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import imposta_allocazione
+from conftest import imposta_allocazione, imposta_orizzonte_automatico
 
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
@@ -31,6 +31,8 @@ def avvia(con_allocazione=True):
     at.run()
     if con_allocazione:
         imposta_allocazione(at, ALLOCAZIONE_PROVA)
+    # Il checkbox nasce attivo: questi test scelgono le date a mano, quindi lo spengono.
+    imposta_orizzonte_automatico(at, False)
     return at
 
 
@@ -111,3 +113,16 @@ def test_la_finestra_usata_e_dichiarata_anche_senza_orizzonte_automatico():
     inizio, fine = data_usata(at)
     assert inizio < fine
     assert inizio.year == 2001  # il valore di default del campo "Data iniziale"
+
+
+def test_l_orizzonte_automatico_e_attivo_di_default():
+    """Chi apre l'app non deve compilare date: la finestra la sceglie lo strumento.
+
+    Il default e' cambiato: prima il checkbox nasceva spento e l'utente doveva
+    attivarlo per avere la finestra comune. Ora e' attivo, e questo test dichiara
+    il nuovo contratto.
+    """
+    at = AppTest.from_file(APP, default_timeout=180)
+    at.run()
+    assert at.checkbox[0].value is True
+    assert len(at.date_input) == 0, "con l'orizzonte automatico non ci sono date da compilare"
