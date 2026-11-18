@@ -136,7 +136,41 @@ class Portfolio:
 
     @property
     def pmc(self):
-        return pd.Series([self._pmc(asset) for asset in self.prices.index], index=self.prices.index )
+        """Prezzo medio di carico per asset, calcolato in un colpo solo.
+
+        E' la stessa formula di `_pmc()`: costo sostenuto diviso quantita'
+        posseduta, zero dove la quantita' e' nulla. Prima era una list
+        comprehension per asset; il ciclo se n'e' andato da qui, dove stava,
+        invece di essere reimplementato fuori dal portafoglio.
+        """
+        quantita = self.holdings.where(self.holdings > 0)
+        return (self.assets_costs / quantita).fillna(0.0)
+
+    def daily_snapshot(self) -> dict:
+        """Valori di giornata del portafoglio, calcolati una volta sola.
+
+        `net_assets_values` chiama `cash_out_costs()`, che cicla per asset con un
+        context manager: leggere `broker_assets_value`, `net_assets_value`,
+        `pmc` e `daily_annual_costs` separatamente ripete quel ciclo ogni volta.
+        Il tracker ne ha bisogno insieme, ogni giorno, per il compounding e per
+        la riga di log: qui si calcola una volta e si restituisce il risultato.
+
+        Le proprieta' restano quelle di prima e non cambiano comportamento: e'
+        cambiato solo quante volte le chiamiamo, non come calcolano.
+        """
+        broker_values = self.holdings * self.prices
+        exit_costs = self.cash_out_costs()
+        net_values = broker_values - exit_costs
+        return {
+            "prices": self.prices,
+            "broker_values": broker_values,
+            "exit_costs": exit_costs,
+            "net_values": net_values,
+            "broker_value": float(broker_values.sum()),
+            "net_value": float(net_values.sum()),
+            "pmc": self.pmc,
+            "holding_costs": broker_values * self.ter,
+        }
 
     @property
     def daily_annual_costs(self):
@@ -466,29 +500,24 @@ class PortfolioTracker:
 
     def update(self, portfolio, date, gross_portfolio=None, taxes={}, costs={}, trade_deltas={}):
 
-        # Una volta al giorno, non sei: broker, costo di uscita, netto, PMC e costo di
-        # detenzione si calcolano da qui e si riusano sia per il compounding sia per la
-        # riga di log. Le proprietà del portafoglio restano quelle di prima (e restano
-        # disponibili per chi le usa fuori da qui): è cambiato solo quante volte le
-        # chiamiamo. Su 12.400 giorni questa ripetizione era la metà del tempo di una
-        # simulazione.
-        prezzi = portfolio.prices
-        valori_broker = portfolio.holdings * prezzi
-        valori_net = valori_broker - portfolio.cash_out_costs()
-        broker_totale = float(valori_broker.sum())
-        net_totale = float(valori_net.sum())
-
-        def _pmc_vettoriale():
-            # Stessa formula della proprietà pmc, senza il ciclo Python per asset.
-            h = portfolio.holdings.to_numpy(dtype=float)
-            c = portfolio.assets_costs.to_numpy(dtype=float)
-            return pd.Series(np.where(h > 0, c / np.where(h > 0, h, 1.0), 0.0), index=prezzi.index)
+        # Una volta al giorno, non sei: il portafoglio calcola in `daily_snapshot()`
+        # broker, costo di uscita, netto, PMC e costo di detenzione, e da qui si
+        # consuma quel risultato per il compounding e per la riga di log. Su 12.400
+        # giorni la ripetizione di quel calcolo era la metà del tempo di una
+        # simulazione. Nessuna formula è riscritta qui fuori: quella del PMC vive
+        # in `Portfolio.pmc`, quella del netto in `Portfolio.net_assets_values`.
+        istantanea = portfolio.daily_snapshot()
+        prezzi = istantanea["prices"]
+        valori_broker = istantanea["broker_values"]
+        valori_net = istantanea["net_values"]
+        broker_totale = istantanea["broker_value"]
+        net_totale = istantanea["net_value"]
 
         gross_valori = None
         gross_totale = None
         if gross_portfolio is not None:
-            gross_valori = gross_portfolio.holdings * gross_portfolio.prices
-            gross_totale = float(gross_valori.sum())
+            gross_valori = gross_portfolio.broker_assets_values
+            gross_totale = float(gross_portfolio.broker_assets_value)
             self._update_compounds(gross_portfolio, 'broker_assets_value', 'gross_assets_value',
                                    valore=gross_totale)
         self._update_compounds(portfolio, 'broker_assets_value', 'broker_assets_value', valore=broker_totale)
@@ -499,11 +528,11 @@ class PortfolioTracker:
             return serie.reindex(self.asset_columns, fill_value=0.0)
 
         prices_dict = {f"Price_{k}": v for k, v in _per_asset(prezzi).to_dict().items()}
-        pmc_dict = {f"PMC_{k}": v for k, v in _per_asset(_pmc_vettoriale()).to_dict().items()}
+        pmc_dict = {f"PMC_{k}": v for k, v in _per_asset(istantanea["pmc"]).to_dict().items()}
         broker_dict = {f"Broker_{k}": v for k, v in _per_asset(valori_broker).to_dict().items()}
         net_dict = {f"Net_{k}": v for k, v in _per_asset(valori_net).to_dict().items()}
         costs_holding_dict = {f"HoldingCost_{k}": v
-                              for k, v in _per_asset(valori_broker * portfolio.ter).to_dict().items()}
+                              for k, v in _per_asset(istantanea["holding_costs"]).to_dict().items()}
 
         gross_dict = {}
         gross_value = None
