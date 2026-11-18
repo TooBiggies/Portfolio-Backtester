@@ -4,8 +4,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from backtester import (ANNI_MINIMI_AFFIDABILI, anni_simulati, backtest,
-                        finestra_simulata, messaggio_orizzonte_breve)
+from backtester import backtest
 
 st.set_page_config(page_title="Portfolio Backtester", page_icon="📈", layout="wide")
 st.title("Portfolio Backtester")

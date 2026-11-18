@@ -12,7 +12,6 @@ ricevere `None` e la finestra mostrata deve essere quella comune, non quella di 
 import datetime as dt
 from pathlib import Path
 
-import pandas as pd
 import pytest
 
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
