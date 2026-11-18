@@ -9,3 +9,6 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
+
+# output delle simulazioni: si rigenerano a ogni esecuzione, non sono sorgenti
+*.xlsx
