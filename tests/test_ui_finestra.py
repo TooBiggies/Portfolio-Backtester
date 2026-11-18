@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import imposta_allocazione
+from conftest import imposta_allocazione, imposta_orizzonte_automatico
 
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
@@ -31,6 +31,8 @@ def avvia(con_allocazione=True):
     at.run()
     if con_allocazione:
         imposta_allocazione(at, ALLOCAZIONE_PROVA)
+    # Il checkbox nasce attivo: questi test scelgono le date a mano, quindi lo spengono.
+    imposta_orizzonte_automatico(at, False)
     return at
 
 

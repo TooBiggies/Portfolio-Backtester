@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import imposta_allocazione
+from conftest import imposta_allocazione, imposta_orizzonte_automatico
 
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
@@ -37,6 +37,8 @@ def avvia(con_allocazione=True):
     at.run()
     if con_allocazione:
         imposta_allocazione(at, ALLOCAZIONE_PROVA)
+    # Il checkbox nasce attivo: questi test scelgono le date a mano, quindi lo spengono.
+    imposta_orizzonte_automatico(at, False)
     return at
 
 
@@ -319,3 +321,11 @@ def test_l_aliquota_cambia_il_valore_netto_ma_non_il_lordo():
     lordo_26, netto_26 = run_con(26.0)
     assert lordo_0 == lordo_26, "il lordo non deve dipendere dall'aliquota"
     assert netto_0 != netto_26, "il netto deve dipendere dall'aliquota"
+
+
+def test_la_soglia_relativa_parte_dal_venti_per_cento():
+    """Default della soglia relativa: 20% del peso obiettivo, in OR con la assoluta."""
+    at = AppTest.from_file(str(APP), default_timeout=60)
+    at.run()
+    campo = next(x for x in at.number_input if "relativa" in x.label.lower())
+    assert campo.value == 20.0

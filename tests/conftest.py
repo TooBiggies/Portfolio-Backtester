@@ -26,3 +26,14 @@ def imposta_allocazione(at, pesi):
     at.session_state["versione_tabella"] = at.session_state.get("versione_tabella", 0) + 1
     at.run()
     return at
+
+
+def imposta_orizzonte_automatico(at, attivo=False):
+    """Dichiara lo stato di «Orizzonte automatico» come farebbe l'utente.
+
+    Il checkbox nasce **attivo**: la finestra la decide l'app, dalla prima data comune
+    a tutti gli strumenti. I test che vogliono scegliere le date a mano devono
+    spegnerlo esplicitamente, altrimenti le date che scrivono non vengono lette.
+    """
+    at.checkbox[0].set_value(attivo).run()
+    return at
