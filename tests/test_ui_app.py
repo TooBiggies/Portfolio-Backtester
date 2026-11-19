@@ -85,7 +85,9 @@ def scrivi_cella(at, asset, colonna, valore):
 def test_l_app_parte_senza_eccezioni():
     at = avvia()
     assert not at.exception, [e.value for e in at.exception]
-    assert at.title[0].value == "Portfolio Backtester"
+    # Il titolo è il nome dello strumento e nient'altro: le istruzioni stanno accanto ai
+    # comandi, il perimetro in fondo alla pagina.
+    assert at.title[0].value == "Backtester"
 
 
 def test_la_tabella_ha_una_riga_per_ogni_asset_e_le_quattro_colonne():
