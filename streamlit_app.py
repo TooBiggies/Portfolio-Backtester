@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from backtester import backtest, anni_simulati, messaggio_orizzonte_breve
+from valuta import ETICHETTE, SIMBOLI
 
 st.set_page_config(page_title="Portfolio Backtester", page_icon="📈", layout="wide")
 st.title("Portfolio Backtester")
@@ -164,7 +165,8 @@ def to_excel_bytes(df_log, df_delta):
 
 @st.cache_data(show_spinner=False, max_entries=2)
 def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, costi_annui,
-                    aliquote, soglia_ribilanciamento, soglia_ribilanciamento_relativa=None):
+                    aliquote, soglia_ribilanciamento, soglia_ribilanciamento_relativa=None,
+                    valuta="USD", reale=False):
     """Il backtest, memorizzato per combinazione di parametri.
 
     È la parte lenta (12-40 secondi su venticinque anni). Senza cache due visitatori con
@@ -188,11 +190,29 @@ def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, c
         risk_free_rate="CASHX",
         plot=False,
         save_outputs=False,
+        # La valuta e la deflazione cambiano i prezzi, non il risultato: la cache le
+        # tratta come parametri, quindi ogni combinazione ha la sua voce giusta.
+        valuta=valuta,
+        reale=reale,
     )
 
 with st.sidebar:
     st.header("Parametri")
-    initial_value = st.number_input("Capitale iniziale ($)", min_value=100.0, value=10_000.0, step=1_000.0)
+    valuta = st.selectbox(
+        "Valuta", ["USD", "EUR", "ITL"], index=0, key="valuta",
+        format_func=lambda v: f"{SIMBOLI[v]}  {v} — {ETICHETTE[v]}",
+        help="I dati di partenza sono in dollari. Cambiando valuta si convertono i prezzi, "
+             "non solo il risultato: costi, imposte e ribilanciamenti avvengono nella "
+             "valuta scelta, come per chi compra strumenti denominati in euro o in lire. "
+             "Prima del 1999 il cambio euro/dollaro è ricostruito dalla lira (1936,27 "
+             "lire per euro) con dati mensili: è la convenzione dell'euro sintetico.")
+    reale = st.checkbox(
+        "Al netto dell'inflazione italiana", value=False, key="reale",
+        help="Toglie l'effetto dell'inflazione italiana (indice HICP di Eurostat, "
+             "ricostruito dal 1956): le curve restano nel potere d'acquisto della prima "
+             "data simulata, non in quello di oggi.")
+    initial_value = st.number_input(
+        f"Capitale iniziale ({SIMBOLI[valuta]})", min_value=100.0, value=10_000.0, step=1_000.0)
     orizzonte_auto = st.checkbox(
         "Orizzonte automatico", value=True, key="orizzonte_auto",
         help="Usa la finestra più lunga in cui TUTTI gli strumenti scelti hanno un prezzo: "
@@ -401,6 +421,8 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
                     # Soglia relativa in OR con quella assoluta: un comparto piccolo
                     # viene riportato a target prima di dover raddoppiare. 0 = spenta.
                     soglia_ribilanciamento_relativa=(rel_rebalance_pct / 100.0) if rel_rebalance_pct > 0 else None,
+                    valuta=valuta,
+                    reale=reale,
                 )
         except ValueError as errore:
             # Un errore del motore è un messaggio per chi usa l'app, non un traceback.
@@ -423,7 +445,7 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
             metriche_tre_portafogli.append({
                 "Portafoglio": etichetta,
                 "CAGR": _percentuale(summary.get(f"cagr_{chiave}")),
-                "Valore finale": f"$ {summary[f'final_{chiave}']:,.2f}",
+                "Valore finale": f"{SIMBOLI[summary.get('valuta', 'USD')]} {summary[f'final_{chiave}']:,.2f}",
                 "Volatilità annua": _percentuale(m.get("volatility")),
                 "Max drawdown": _percentuale(m.get("max_drawdown")),
                 f"Sharpe (rf={summary.get('risk_free_rate', 0.0) * 100:.2f}%)": _numero(m.get("sharpe")),
@@ -440,8 +462,21 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
         )
         st.caption(
             f"Simulato dal **{summary['begin_date'].date()}** al **{summary['end_date'].date()}** "
-            f"({summary['years']:.2f} anni), capitale iniziale {initial_value:,.0f}."
+            f"({summary['years']:.2f} anni), capitale iniziale {initial_value:,.0f} "
+            f"{SIMBOLI[summary.get('valuta', 'USD')]}."
         )
+        if summary.get("valuta", "USD") != "USD" or summary.get("reale"):
+            _valuta_riga = ("euro" if summary["valuta"] == "EUR"
+                            else "lire" if summary["valuta"] == "ITL" else "dollari")
+            _nota = (f"Valori in **{_valuta_riga}**: il cambio è applicato ai prezzi, quindi "
+                     "ribilanciamenti e imposte ragionano nella valuta scelta.")
+            if summary.get("reale"):
+                _nota += (" Al netto dell'inflazione italiana: le curve sono nel potere "
+                          "d'acquisto della prima data simulata, non in quello di oggi.")
+            if summary["valuta"] != "USD" and summary["begin_date"] < pd.Timestamp("1999-01-01"):
+                _nota += (" Prima del 1999 l'euro non esisteva: il cambio è ricostruito dalla "
+                          "lira a 1936,27 lire per euro, con dati mensili riportati in avanti.")
+            st.caption(_nota)
         st.caption(
             f"Sharpe e Sortino usano {summary.get('risk_free_rate_source', '0')} come tasso privo di "
             f"rischio: nel periodo ha reso in media {summary.get('risk_free_rate', 0.0) * 100:.2f}% "
