@@ -3,7 +3,7 @@ import warnings
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from valuta import converti_prezzi
+from valuta import converti_prezzi, prima_data_valida
 
 from engine import Portfolio, PortfolioTracker, Rebalancer
 from metrics import risk_metrics
@@ -243,6 +243,14 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     # scattano sugli scostamenti in euro e le plusvalenze tassate sono quelle in euro.
     # Il controllo sui buchi della finestra qui sotto legge i prezzi già convertiti, che
     # restano NaN dove erano NaN.
+    # Se il portafoglio è espresso in euro o lire, la finestra non può cominciare prima
+    # che esistano quelle serie (1971): il dataset dei prezzi parte nel 1969. Si ritaglia
+    # qui, invece di far fallire una simulazione che l'utente ha chiesto in buona fede.
+    if valuta != "USD":
+        inizio_valute = prima_data_valida(data_cambi)
+        if prices.index[0] < inizio_valute:
+            prices = prices[prices.index >= inizio_valute]
+            begin_date = prices.index[0]
     prices = converti_prezzi(prices, valuta=valuta, reale=reale, percorso=data_cambi)
     # Ogni asset con peso > 0 deve avere un prezzo per tutta la finestra richiesta.
     # Un NaN (asset che parte dopo, o che finisce prima) rende il valore di

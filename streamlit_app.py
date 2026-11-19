@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from backtester import backtest, anni_simulati, messaggio_orizzonte_breve
-from valuta import ETICHETTE, SIMBOLI
+from valuta import ETICHETTE, SIMBOLI, prima_data_valida
 
 st.set_page_config(page_title="Backtester", page_icon="📈", layout="wide")
 # Il titolo è il nome dello strumento e nient'altro: la pagina è una calcolatrice, e le
@@ -109,6 +109,13 @@ raw = carica_storico(str(DATA_FILE), DATA_FILE.stat().st_mtime)
 assets = [c for c in raw.columns if c != "Date"]
 min_date = raw["Date"].min().date()
 max_date = raw["Date"].max().date()
+# Le serie di cambio cominciano nel 1971, il dataset dei prezzi nel 1969: chi sceglie euro
+# o lire non può partire prima, e l'interfaccia non deve offrirglielo.
+_min_valuta = prima_data_valida().date()
+
+
+def _minimo_ammesso(valuta_scelta):
+    return _min_valuta if valuta_scelta != "USD" else min_date
 
 def finestra_comune(attivi):
     """Finestra in cui TUTTI gli strumenti attivi hanno un prezzo: (inizio, fine, chi_decide).
@@ -191,6 +198,7 @@ with st.sidebar:
              "valuta scelta, come per chi compra strumenti denominati in euro o in lire. "
              "Prima del 1999 il cambio euro/dollaro è ricostruito dalla lira (1936,27 "
              "lire per euro) con dati mensili: è la convenzione dell'euro sintetico.")
+    min_date_valuta = _minimo_ammesso(valuta)
     reale = st.checkbox(
         "Al netto dell'inflazione italiana", value=False, key="reale",
         help="Toglie l'effetto dell'inflazione italiana (indice HICP di Eurostat, "
@@ -215,16 +223,18 @@ with st.sidebar:
             _primo, _ultimo = st.session_state.pop("chiedi_finestra")
             st.session_state["data_inizio"] = _primo
             st.session_state["data_fine"] = _ultimo
-        st.session_state.setdefault("data_inizio", max(min_date, pd.Timestamp("2001-01-01").date()))
+        st.session_state.setdefault("data_inizio", max(min_date_valuta, pd.Timestamp("2001-01-01").date()))
         st.session_state.setdefault("data_fine", min(max_date, pd.Timestamp("2025-09-01").date()))
         begin_date = st.date_input(
             "Data iniziale",
             key="data_inizio",
-            min_value=min_date, max_value=max_date,
+            min_value=min_date_valuta, max_value=max_date,
             help=f"Il calendario mostra dieci anni avanti e indietro dalla data scelta: per "
                  f"andare più indietro **scrivi l'anno nel campo** (o usa le frecce ←→). "
-                 f"I dati arrivano dal {min_date} al {max_date}. Per partire dal primo giorno "
-                 f"disponibile usa «Orizzonte automatico».")
+                 f"I dati arrivano dal {min_date_valuta} al {max_date}"
+                 + (" (il cambio comincia nel 1971: prima di allora i valori in euro o lire "
+                    "non esistono)" if valuta != "USD" else "")
+                 + ". Per partire dal primo giorno disponibile usa «Orizzonte automatico».")
         end_date = st.date_input(
             "Data finale",
             key="data_fine",
@@ -414,9 +424,12 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
                     valuta=valuta,
                     reale=reale,
                 )
-        except ValueError as errore:
+        except Exception as errore:  # noqa: BLE001
             # Un errore del motore è un messaggio per chi usa l'app, non un traceback.
-            _errore = f"Il backtest non può partire: {errore}"
+            # Si cattura qualunque eccezione, non solo ValueError: su Streamlit Cloud il
+            # testo delle eccezioni non gestite viene oscurato ("redacted"), e un TypeError
+            # senza messaggio è indistinguibile da un guasto dell'app.
+            _errore = f"Il backtest non può partire: {type(errore).__name__}: {errore}"
         else:
             st.session_state[CHIAVE_RISULTATI] = _risultati
 
