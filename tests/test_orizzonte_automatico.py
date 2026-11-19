@@ -10,20 +10,29 @@ Questi test verificano il percorso completo: attivando "Orizzonte automatico" il
 ricevere `None` e la finestra mostrata deve essere quella comune, non quella di default.
 """
 import datetime as dt
+from pathlib import Path
 
-import pandas as pd
 import pytest
+
+from conftest import imposta_allocazione, imposta_orizzonte_automatico
 
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
 
-APP = __file__.rsplit("/tests/", 1)[0] + "/streamlit_app.py"
+APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
 pytestmark = pytest.mark.ui
 
 
-def avvia():
+ALLOCAZIONE_PROVA = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
+
+
+def avvia(con_allocazione=True):
     at = AppTest.from_file(APP, default_timeout=180)
     at.run()
+    if con_allocazione:
+        imposta_allocazione(at, ALLOCAZIONE_PROVA)
+    # Il checkbox nasce attivo: questi test scelgono le date a mano, quindi lo spengono.
+    imposta_orizzonte_automatico(at, False)
     return at
 
 
@@ -68,8 +77,7 @@ def test_la_finestra_comune_dipende_dagli_strumenti_scelti():
     """Con il solo azionario globale la storia comune arriva al 1969: la finestra automatica
     non è una costante dell'applicazione, è una proprietà del portafoglio."""
     at = avvia()
-    at.selectbox[0].set_value("Solo azionario globale").run()
-    bottone(at, "Carica il portafoglio predefinito").click().run()
+    imposta_allocazione(at, {"VTSIM": 100.0})      # solo azionario globale
     at.checkbox[0].set_value(True).run()
     bottone(at, "Esegui backtest").click().run()
     inizio, _ = data_usata(at)
@@ -105,3 +113,16 @@ def test_la_finestra_usata_e_dichiarata_anche_senza_orizzonte_automatico():
     inizio, fine = data_usata(at)
     assert inizio < fine
     assert inizio.year == 2001  # il valore di default del campo "Data iniziale"
+
+
+def test_l_orizzonte_automatico_e_attivo_di_default():
+    """Chi apre l'app non deve compilare date: la finestra la sceglie lo strumento.
+
+    Il default e' cambiato: prima il checkbox nasceva spento e l'utente doveva
+    attivarlo per avere la finestra comune. Ora e' attivo, e questo test dichiara
+    il nuovo contratto.
+    """
+    at = AppTest.from_file(APP, default_timeout=180)
+    at.run()
+    assert at.checkbox[0].value is True
+    assert len(at.date_input) == 0, "con l'orizzonte automatico non ci sono date da compilare"

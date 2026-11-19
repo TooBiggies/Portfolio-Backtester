@@ -4,12 +4,28 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from backtester import (ANNI_MINIMI_AFFIDABILI, anni_simulati, backtest,
-                        finestra_simulata, messaggio_orizzonte_breve)
+from backtester import backtest, anni_simulati, messaggio_orizzonte_breve
 
 st.set_page_config(page_title="Portfolio Backtester", page_icon="📈", layout="wide")
 st.title("Portfolio Backtester")
 st.caption("Configura online asset allocation, periodo, costi, soglia di ribilanciamento e fiscalità.")
+
+# Perimetro dichiarato, in cima alla pagina e non in fondo: chiunque apra lo strumento deve
+# sapere cosa sta usando prima di digitare un numero. È anche la ragione per cui i portafogli
+# predefiniti sono stati rimossi: un'allocazione suggerita è una raccomandazione, e questa
+# pagina non è il posto dove darne.
+st.info(
+    "**Strumento didattico.** Calcola cosa sarebbe successo a un portafoglio che definisci tu, "
+    "sui dati storici di questo dataset. Non è consulenza in materia di investimenti, non valuta "
+    "l'adeguatezza di un prodotto rispetto a un profilo, non contiene raccomandazioni né "
+    "previsioni. I rendimenti passati non predicono quelli futuri: nessun risultato di questa "
+    "pagina è una garanzia. Nessuno strumento finanziario viene promosso o collocato qui."
+)
+st.caption(
+    "Limiti del calcolo: imposte applicate solo sugli utili realizzati al ribilanciamento "
+    "(le minusvalenze non sono compensate), valori in dollari statunitensi, serie con suffisso "
+    "SIM ricostruite e non strumenti negoziabili."
+)
 
 # Cosa sono i ticker del dataset: senza questo, "VTSIM" non dice niente a chi apre la pagina.
 ASSET_INFO = {
@@ -26,34 +42,11 @@ ASSET_INFO = {
     "DBMFSIM": ("Managed futures replicato", "Replica della performance media dei gestori CTA (indice SG CTA)."),
 }
 
-# Portafoglio che l'app carica all'apertura. Il preset "Attuale" legge DA QUI, non da una
-# copia: prima erano due dizionari separati e si erano gia' disallineati (il preset diceva
-# 60/10/25/5 con ZROZ al 25%, il default era 60/10/20/10 con IEF al 20%: caricare "Attuale"
-# cambiava il portafoglio invece di riportarlo all'inizio).
-DEFAULT_PESI = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
-
-# Portafogli pronti: approssimazioni costruite con gli asset disponibili nel dataset.
-# I nomi restano corti; la composizione la scrive `composizione_preset()` con i nomi degli
-# strumenti, perche' "60/10/20/10" non dice a quale strumento corrisponde ogni percentuale
-# (issue #85).
-PRESET = {
-    "Attuale": DEFAULT_PESI,
-    "Classico 60/40": {"VTSIM": 60.0, "IEFSIM": 40.0},
-    "Permanent Portfolio": {"VTSIM": 25.0, "TLTSIM": 25.0, "GLDSIM": 25.0, "CASHX": 25.0},
-    "All weather": {"VTSIM": 30.0, "TLTSIM": 40.0, "IEFSIM": 15.0, "GLDSIM": 15.0},
-    "Golden butterfly": {"VTSIM": 40.0, "TLTSIM": 20.0, "SHYSIM": 20.0, "GLDSIM": 20.0},
-    "Solo azionario globale": {"VTSIM": 100.0},
-}
-
-
-def composizione_preset(nome):
-    """«60% VTSIM (azionario globale) · 10% GLDSIM (oro fisico) · …» per il preset scelto."""
-    pezzi = []
-    for asset, peso in PRESET[nome].items():
-        if float(peso) > 0:
-            nome_leggibile = ASSET_INFO.get(asset, (asset, ""))[0]
-            pezzi.append(f"{float(peso):.0f}% {asset} ({nome_leggibile})")
-    return " · ".join(pezzi)
+# Portafogli predefiniti: rimossi. Erano sei costruzioni con un nome proprio («Classico
+# 60/40», «All weather», «Golden butterfly»…): agli occhi di un'autorità di vigilanza sono
+# portafogli modello, cioè la raccomandazione di un'allocazione a un pubblico indistinto.
+# Lo strumento resta un calcolatore: l'allocazione la scrive chi lo usa, e la tabella parte
+# da zero proprio perché non c'è nulla da suggerire.
 
 
 # Aliquote di partenza per strumento: 12,5% sui titoli di Stato white list (base ridotta al
@@ -70,12 +63,12 @@ def nuova_versione_tabella():
     st.session_state["versione_tabella"] = st.session_state.get("versione_tabella", 0) + 1
 
 
-def carica_preset(nome):
-    """Imposta le allocazioni del preset; gira PRIMA che la tabella esista (on_click)."""
+def azzera_allocazione():
+    """Riporta a zero le allocazioni: la tabella è dell'utente, l'app non propone pesi."""
     if CHIAVE_TABELLA not in st.session_state:
         return
     tabella = st.session_state[CHIAVE_TABELLA].copy()
-    tabella["Allocazione (%)"] = [int(PRESET[nome].get(asset, 0.0)) for asset in tabella.index]
+    tabella["Allocazione (%)"] = 0.0
     st.session_state[CHIAVE_TABELLA] = tabella
     nuova_versione_tabella()
 
@@ -110,9 +103,23 @@ def applica_valori_globali():
 
 
 DATA_FILE = Path(__file__).with_name("Timeseries.csv")
-raw = pd.read_csv(DATA_FILE, sep=";")
-raw["Date"] = pd.to_datetime(raw["Date"], dayfirst=True, errors="coerce")
-raw = raw.dropna(subset=["Date"])
+
+
+@st.cache_data(show_spinner=False)
+def carica_storico(percorso: str, versione: float) -> pd.DataFrame:
+    """CSV dei prezzi, letto una volta per file.
+
+    `versione` è la data di modifica del file: se cambia, la cache si invalida. Serve
+    perché Streamlit riesegue lo script dall'inizio a ogni interazione, e senza cache
+    ogni clic di ogni visitatore rileggeva 1,4 MB di serie. In locale non si nota; con
+    più persone sulla stessa istanza sì.
+    """
+    dati = pd.read_csv(percorso, sep=";")
+    dati["Date"] = pd.to_datetime(dati["Date"], dayfirst=True, errors="coerce")
+    return dati.dropna(subset=["Date"])
+
+
+raw = carica_storico(str(DATA_FILE), DATA_FILE.stat().st_mtime)
 assets = [c for c in raw.columns if c != "Date"]
 min_date = raw["Date"].min().date()
 max_date = raw["Date"].max().date()
@@ -139,17 +146,55 @@ def finestra_comune(attivi):
 
 
 def to_excel_bytes(df_log, df_delta):
+    """Excel dei risultati, senza le serie di prezzo.
+
+    L'export serve a mostrare la storia del portafoglio — valori, ribilanciamenti,
+    imposte — non a ridistribuire i dati di mercato. Le colonne `Price_*` e `PMC_*`
+    restano nel log interno (servono all'interfaccia e alle verifiche), ma non escono
+    dal file scaricabile: sono anche la parte che pesa, perché sono una colonna per
+    ogni giorno di borsa per ogni asset.
+    """
+    colonne = [c for c in df_log.columns if not c.startswith(("Price_", "PMC_"))]
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df_log.to_excel(writer, sheet_name="Portfolio")
+        df_log[colonne].to_excel(writer, sheet_name="Portfolio")
         df_delta.to_excel(writer, sheet_name="Rebalancing")
     return buffer.getvalue()
+
+
+@st.cache_data(show_spinner=False, max_entries=2)
+def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, costi_annui,
+                    aliquote, soglia_ribilanciamento, soglia_ribilanciamento_relativa=None):
+    """Il backtest, memorizzato per combinazione di parametri.
+
+    È la parte lenta (12-40 secondi su venticinque anni). Senza cache due visitatori con
+    gli stessi input pagavano due volte la stessa simulazione, su un'istanza che ha un
+    core solo. `max_entries=2` perché ogni voce contiene il log giornaliero per asset:
+    tenerne quattro in memoria non serve e su Streamlit Community Cloud (1 GB) pesa.
+    """
+    return backtest(
+        initial_value=initial_value,
+        weights=weights,
+        begin_date=begin_date,
+        end_date=end_date,
+        brokerage_fee_rate=commissioni,
+        rebalance_threshold=soglia_ribilanciamento,
+        rel_rebalance_threshold=soglia_ribilanciamento_relativa,
+        tax_rate=aliquote,
+        annual_costs_rate=costi_annui,
+        # Sharpe e Sortino con il cash a 3 mesi come tasso privo di rischio
+        # (issue #79). Con rf=0 il rapporto era sovrastimato: nel periodo
+        # 2010-2025 il cash ha reso in media 1,33% l'anno.
+        risk_free_rate="CASHX",
+        plot=False,
+        save_outputs=False,
+    )
 
 with st.sidebar:
     st.header("Parametri")
     initial_value = st.number_input("Capitale iniziale ($)", min_value=100.0, value=10_000.0, step=1_000.0)
     orizzonte_auto = st.checkbox(
-        "Orizzonte automatico", value=False, key="orizzonte_auto",
+        "Orizzonte automatico", value=True, key="orizzonte_auto",
         help="Usa la finestra più lunga in cui TUTTI gli strumenti scelti hanno un prezzo: "
              "l'inizio è la più recente fra le date di partenza degli strumenti, la fine è "
              "l'ultima data disponibile. Non serve per la volatilità di un singolo strumento: "
@@ -197,29 +242,37 @@ with st.sidebar:
         key="glob_aliquota", on_change=applica_colonna("Aliquota (%)", "glob_aliquota"),
         help="26% sui guadagni ordinari, 12,5% sui titoli di Stato white list. Il valore "
              "precompilato per ogni strumento si può cambiare nella tabella.")
-    rebalance_pct = st.number_input("Soglia di ribilanciamento assoluta (%)", min_value=0.1, max_value=100.0, value=5.0, step=0.5)
+    rebalance_pct = st.number_input(
+        "Soglia di ribilanciamento assoluta (%)", min_value=0.1, max_value=100.0, value=5.0, step=0.5,
+        help="Scostamento misurato in punti di peso. Con 5%, un comparto al 50% viene "
+             "riportato a target quando arriva al 55% o scende al 45%. Il ribilanciamento "
+             "scatta quando lo scostamento supera QUESTO valore oppure la soglia "
+             "relativa: basta che una delle due sia superata.")
+    rel_rebalance_pct = st.number_input(
+        "Soglia di ribilanciamento relativa (%)", min_value=0.0, max_value=100.0, value=20.0, step=1.0,
+        help="Scostamento misurato in percentuale del peso obiettivo di ciascuno "
+             "strumento. Con 20%, un comparto al 5% viene riportato a target quando "
+             "arriva al 6% o scende al 4%. Il ribilanciamento scatta quando lo "
+             "scostamento supera QUESTA percentuale oppure la soglia assoluta: basta "
+             "che una delle due sia superata. 0 = soglia relativa disattivata.")
     st.button("Applica i valori globali a tutti gli strumenti", on_click=applica_valori_globali,
               width="stretch",
               help="Sovrascrive commissione, costi annui e aliquota di ogni riga con i tre "
                    "valori qui sopra. Le modifiche fatte a mano nella tabella vanno perse.")
 
-scelta_preset = st.selectbox("Portafoglio predefinito", list(PRESET),
-    help="Approssimazioni costruite con gli asset disponibili in questo dataset.")
-st.caption(f"Composizione di «{scelta_preset}»: {composizione_preset(scelta_preset)}")
-st.button("Carica il portafoglio predefinito", on_click=carica_preset,
-          args=(scelta_preset,), width="stretch",
-          help="Riscrive la colonna dell'allocazione con i pesi del portafoglio scelto.")
-defaults = DEFAULT_PESI
+st.button("Azzera le allocazioni", on_click=azzera_allocazione, width="stretch",
+          help="Riporta a zero la colonna «Allocazione (%)»: l'app non propone pesi, "
+               "li scrivi tu. Commissioni, costi e aliquote restano quelli impostati.")
 
-# Una sola tabella per strumento: allocazione e i tre costi (#73). I valori iniziali
-# vengono dai campi generali della barra laterale, tranne l'aliquota dei Treasury che parte
-# dal 12,5% di legge. La tabella vive in session_state perché i preset e il bottone
-# "applica a tutti" la riscrivono prima che il widget esista.
+# Una sola tabella per strumento: allocazione e i tre costi (#73). L'allocazione parte da
+# zero: l'app non suggerisce pesi. Costi e aliquote partono dai campi generali della barra
+# laterale, tranne l'aliquota dei Treasury che parte dal 12,5% di legge. La tabella vive in
+# session_state perché «azzera» e «applica a tutti» la riscrivono prima che il widget esista.
 if CHIAVE_TABELLA not in st.session_state:
     st.session_state[CHIAVE_TABELLA] = pd.DataFrame(
         {
             "Strumento": assets,
-            "Allocazione (%)": [float(defaults.get(asset, 0.0)) for asset in assets],
+            "Allocazione (%)": [0.0] * len(assets),
             "Commissione (%)": [float(brokerage_pct)] * len(assets),
             "Costi annui (%)": [float(annual_costs_pct)] * len(assets),
             "Aliquota (%)": [ALIQUOTA_SOVRANA if asset in STRUMENTI_SOVRANI else float(tax_pct)
@@ -285,6 +338,18 @@ if orizzonte_auto and attivi:
 if attivi and total_weight != 100:
     st.warning(f"L'allocazione somma a {total_weight:.0f}% e non a 100%: correggila prima di eseguire.")
 
+# Orizzonte breve, dichiarato PRIMA di eseguire (issue #88). La finestra non si stima
+# dalle date scelte: si chiede al motore quale simulerebbe davvero con questi ingressi
+# (`anni_simulati` usa la stessa regola di `backtest()`), così l'avviso compare negli
+# stessi casi in cui il motore lo metterebbe nel riepilogo. Se il motore non sa ancora
+# calcolare la finestra (date invertite, strumenti senza prezzi) non c'è niente da dire:
+# ci pensa l'errore corrispondente.
+if attivi:
+    _anni_motore = anni_simulati(raw, list(attivi), begin_date, end_date)
+    _avviso_orizzonte = messaggio_orizzonte_breve(_anni_motore)
+    if _avviso_orizzonte:
+        st.warning(_avviso_orizzonte)
+
 # La finestra chiesta esce da quella coperta dagli strumenti attivi: si dice quale la
 # limita e si offre il rimedio in un clic. Il bottone sta qui, nel flusso normale, e non
 # dentro il tasto «Esegui»: dentro esisterebbe solo nel run in cui hai premuto Esegui, e
@@ -324,21 +389,18 @@ if st.button("Esegui backtest", type="primary", width="stretch"):
         aliquote = {asset: float(tabella.loc[asset, "Aliquota (%)"]) / 100.0 for asset in attivi}
         try:
             with st.spinner("Esecuzione del backtest..."):
-                df_log, df_delta, summary = backtest(
+                df_log, df_delta, summary = esegui_backtest(
                     initial_value=initial_value,
                     weights=weights,
                     begin_date=pd.Timestamp(begin_date) if begin_date is not None else None,
                     end_date=pd.Timestamp(end_date) if end_date is not None else None,
-                    brokerage_fee_rate=commissioni,
-                    rebalance_threshold=rebalance_pct / 100.0,
-                    tax_rate=aliquote,
-                    annual_costs_rate=costi_annui,
-                    # Sharpe e Sortino con il cash a 3 mesi come tasso privo di rischio
-                    # (issue #79). Con rf=0 il rapporto era sovrastimato: nel periodo
-                    # 2010-2025 il cash ha reso in media 1,33% l'anno.
-                    risk_free_rate="CASHX",
-                    plot=False,
-                    save_outputs=False,
+                    commissioni=commissioni,
+                    costi_annui=costi_annui,
+                    aliquote=aliquote,
+                    soglia_ribilanciamento=rebalance_pct / 100.0,
+                    # Soglia relativa in OR con quella assoluta: un comparto piccolo
+                    # viene riportato a target prima di dover raddoppiare. 0 = spenta.
+                    soglia_ribilanciamento_relativa=(rel_rebalance_pct / 100.0) if rel_rebalance_pct > 0 else None,
                 )
         except ValueError as errore:
             # Un errore del motore è un messaggio per chi usa l'app, non un traceback.

@@ -4,7 +4,6 @@ Servono come rete di sicurezza per le correzioni successive: se un numero cambia
 deve essere per la ragione dichiarata nel test, non per caso.
 """
 import pandas as pd
-import pytest
 
 from backtester import backtest
 from engine import Portfolio, Rebalancer

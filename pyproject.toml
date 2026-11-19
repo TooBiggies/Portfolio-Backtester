@@ -22,3 +22,19 @@ dev = [
 markers = [
     "ui: richiede streamlit (AppTest), eseguito nel job CI dedicato",
 ]
+
+[tool.ruff]
+# Solo la famiglia F (pyflakes): errori veri — nomi non definiti, import inutilizzati,
+# variabili assegnate e mai usate. Si parte da qui perché è l'insieme che oggi passa:
+# aggiungere stile (E, I) senza ripulire il codice renderebbe la CI rossa al primo merge.
+# L'insieme va allargato man mano che il resto viene sistemato.
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Codice morto, senza import e senza test: non si ripulisce quello che va rimosso.
+# Quando i due file spariranno, spariscono anche queste righe.
+"classes.py" = ["F401", "F403", "F405"]
+"create_xlsx.py" = ["F401", "F403", "F405"]

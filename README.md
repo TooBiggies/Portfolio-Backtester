@@ -6,7 +6,7 @@ Da questa pagina:
 
 1. Cliccare sul pulsante verde **Code**.
 2. Selezionare la scheda **Codespaces**.
-3. Cliccare su **Create codespace on main**.
+3. Cliccare su **Create codespace on develop**.
 4. Attendere l'apertura dell'ambiente di sviluppo nel browser.
 5. Aprire il terminale dal menu **Terminal > New Terminal**.
 6. Installare le dipendenze:
@@ -25,6 +25,29 @@ python -m streamlit run streamlit_app.py
 
 Se la notifica non compare, aprire la scheda **Porte**, individuare la porta `8501` e cliccare sull'icona per aprirla nel browser.
 
+## Come eseguire la simulazione da terminale
+
+Oltre all'interfaccia, il progetto ha un secondo punto di ingresso: `backtester.py`.
+Si usa dalla cartella del progetto, con le dipendenze già installate:
+
+```bash
+python backtester.py
+```
+
+Esegue la configurazione scritta nel blocco `if __name__ == "__main__"` in fondo al
+file — attualmente 60% `VTSIM`, 25% `ZROZSIM`, 10% `GLDSIM`, 5% `DBMFSIM`, capitale
+iniziale 10.000, dal 2 gennaio 2010 al 1° settembre 2025, commissione 0,29%, soglia di
+ribilanciamento 10%, imposta 26%. Per simulare un altro portafoglio si modificano quei
+parametri nel file: è un esempio eseguibile, non un'interfaccia a riga di comando.
+
+L'output è lo stesso riepilogo dell'app, stampato a video: orizzonte, anni, CAGR lordo,
+broker e netto, valore finale, volatilità, drawdown massimo, Sharpe, Sortino, Ulcer
+index e Calmar.
+
+Vengono inoltre scritti nella cartella `output_ptf.xlsx`, `output_ptf_delta.xlsx` e
+`plot.png`: sono artefatti di una simulazione, non sorgenti, e si rigenerano a ogni
+esecuzione. Per non produrli si passa `save_outputs=False` alla chiamata.
+
 ## Come utilizzare l'applicazione
 
 Nella pagina dell'applicazione è possibile configurare:
@@ -40,6 +63,70 @@ Nella pagina dell'applicazione è possibile configurare:
 La somma dei pesi degli asset deve essere pari al `100%`.
 
 Dopo aver impostato i parametri, cliccare su **Esegui backtest**.
+
+## Pubblicare l'app su Streamlit Community Cloud
+
+L'app è pronta per essere pubblicata gratuitamente, senza server da gestire:
+
+1. Accedere a [share.streamlit.io](https://share.streamlit.io) con l'account GitHub.
+2. **New app** → repository `TooBiggies/Portfolio-Backtester`.
+3. **Branch: `develop`** (non `main`: contiene solo il README) e **Main file path: `streamlit_app.py`**.
+4. **Deploy**.
+
+Cosa aspettarsi dal piano gratuito:
+
+- **1 GB di RAM e un core condiviso.** Due simulazioni insieme si mettono in coda: il
+  backtest su venticinque anni impiega da 12 a 40 secondi.
+- **L'app va in sleep dopo un periodo di inattività** e si risveglia al primo visitatore,
+  con qualche secondo di attesa.
+- **Nessun dato persistente:** ogni riavvio riparte dal CSV nel repository.
+- La cache è già configurata: lo storico dei prezzi si legge una volta per file e il
+  risultato di una simulazione viene riusato per la stessa combinazione di parametri.
+
+Due cose da verificare al primo deploy:
+
+- **Versione di Python.** `pyproject.toml` dichiara `>=3.14`; la piattaforma potrebbe
+  offrire solo 3.13. Il codice non usa nulla di specifico della 3.14, quindi dovrebbe
+  funzionare: se l'installazione fallisce, il primo sospetto è la versione selezionata
+  nelle impostazioni dell'app.
+- **`requirements.txt` è un freeze generato su macOS.** Contiene alcuni pacchetti che
+  servono solo lì (per esempio `appnope`). Se l'installazione su Linux si blocca, il set
+  minimo che serve davvero è questo:
+
+```bash
+pandas numpy matplotlib openpyxl streamlit
+```
+
+## Perimetro editoriale
+
+Questo strumento **calcola**, non consiglia. La distinzione è il motivo per cui l'app è
+fatta così com'è.
+
+**Cosa fa:** applica una sequenza di regole deterministiche (allocazione, ribilanciamenti,
+commissioni, costi annui, imposte) a una serie storica di prezzi, e mostra cosa sarebbe
+successo. Niente di più.
+
+**Cosa non fa, e non deve fare:**
+
+- non propone allocazioni. I portafogli predefiniti con un nome proprio — «Classico 60/40»,
+  «All weather», «Golden butterfly» e simili — sono stati **rimossi**: per un'autorità di
+  vigilanza un'allocazione suggerita con un nome è un portafoglio modello, cioè una
+  raccomandazione rivolta a un pubblico indistinto. La tabella parte da zero e i pesi li
+  scrive chi usa lo strumento;
+- non valuta l'adeguatezza di un prodotto rispetto a un profilo, un'esigenza o una
+  situazione patrimoniale;
+- non fa previsioni e non produce segnali di acquisto o vendita;
+- non nomina prodotti negoziabili: le serie con suffisso `SIM` sono ricostruzioni, non
+  strumenti che qualcuno può comprare;
+- non raccoglie dati personali: non c'è login, non c'è profilazione, e l'elaborazione
+  avviene nella sessione del visitatore.
+
+**Limiti del calcolo, dichiarati:** le imposte sono applicate solo sugli utili realizzati
+al ribilanciamento e le minusvalenze non sono compensate (issue #89); i valori sono in
+dollari statunitensi; il rendimento passato non predice quello futuro.
+
+Chi usa questo strumento per decidere come impiegare il proprio denaro lo sta usando come
+calcolatrice, non come consulente: la responsabilità della scelta resta sua.
 
 ## Risultati
 
