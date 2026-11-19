@@ -28,6 +28,15 @@ def imposta_allocazione(at, pesi):
     return at
 
 
+def casella_per_chiave(at, chiave):
+    """Il checkbox per chiave, non per indice.
+
+    L'indice dipende dall'ordine con cui la pagina disegna i widget: aggiungerne uno
+    prima sposta silenziosamente tutti gli altri. La chiave no.
+    """
+    return next(c for c in at.checkbox if c.key == chiave)
+
+
 def imposta_orizzonte_automatico(at, attivo=False):
     """Dichiara lo stato di «Orizzonte automatico» come farebbe l'utente.
 
@@ -35,5 +44,5 @@ def imposta_orizzonte_automatico(at, attivo=False):
     a tutti gli strumenti. I test che vogliono scegliere le date a mano devono
     spegnerlo esplicitamente, altrimenti le date che scrivono non vengono lette.
     """
-    at.checkbox[0].set_value(attivo).run()
+    casella_per_chiave(at, "orizzonte_auto").set_value(attivo).run()
     return at

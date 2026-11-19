@@ -3,6 +3,8 @@ import warnings
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from valuta import converti_prezzi
+
 from engine import Portfolio, PortfolioTracker, Rebalancer
 from metrics import risk_metrics
 
@@ -135,7 +137,8 @@ def anni_simulati(dati, asset_columns, begin_date=None, end_date=None):
 def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_fee_rate=0.,
              rebalance_threshold=0.1, tax_rate=0., annual_costs_rate=0., plot=False,
              save_outputs=True, risk_free_rate: float | str | pd.Series = 0.0, data_path="./Timeseries.csv",
-             gov_share=None, bollo_rate=None, rel_rebalance_threshold=None):
+             gov_share=None, bollo_rate=None, rel_rebalance_threshold=None,
+             valuta="USD", reale=False, data_cambi=None):
     """
     Performs a backtest of a portfolio over a given time horizon with periodic rebalancing,
     accounting for brokerage fees, taxes, and annual costs.
@@ -178,6 +181,20 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         usa il rendimento giornaliero della colonna, e il tasso varia nel tempo.
         Con 0.0 i due rapporti sono più alti e non confrontabili fra periodi con
         tassi diversi (vedi issue #79).
+
+    valuta : str
+        Valuta in cui esprimere il portafoglio: ``"USD"`` (i dati di partenza),
+        ``"EUR"`` o ``"ITL"``. Convertono i **prezzi**, non il risultato: costi, imposte
+        e ribilanciamenti avvengono nella valuta scelta, come per un investitore che
+        compra strumenti denominati in euro o in lire.
+
+    reale : bool
+        Se vero, i valori sono al netto dell'inflazione italiana: la curva è espressa
+        nel potere d'acquisto della prima data simulata.
+
+    data_cambi : str, optional
+        Percorso delle serie di cambio e inflazione. Se assente si usa
+        ``dati/cambi_inflazione.csv`` accanto a questo modulo.
 
     Returns
     -------
@@ -222,6 +239,11 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
     asset_columns=list(weights.keys())
     dati = pd.read_csv(data_path, sep=";")
     prices, begin_date, end_date = prepare_price_dataframe(dati, begin_date=begin_date, end_date=end_date, asset_columns=asset_columns)
+    # Valuta e inflazione si applicano ai PREZZI, non al risultato: così i ribilanciamenti
+    # scattano sugli scostamenti in euro e le plusvalenze tassate sono quelle in euro.
+    # Il controllo sui buchi della finestra qui sotto legge i prezzi già convertiti, che
+    # restano NaN dove erano NaN.
+    prices = converti_prezzi(prices, valuta=valuta, reale=reale, percorso=data_cambi)
     # Ogni asset con peso > 0 deve avere un prezzo per tutta la finestra richiesta.
     # Un NaN (asset che parte dopo, o che finisce prima) rende il valore di
     # portafoglio non finito: storicamente il risultato era "capitale finale 0.00".
@@ -407,6 +429,10 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
         "begin_date": dates[0],
         "end_date": dates[-1],
         "years": years,
+        # Valuta e deflazione con cui sono espressi i valori: senza questi due campi
+        # l'interfaccia non saprebbe se scrivere "$", "€" o "₤" accanto a un numero.
+        "valuta": valuta,
+        "reale": bool(reale),
         # Orizzonte breve: la simulazione si esegue lo stesso, ma chi legge il numero
         # deve sapere che sotto i dieci anni il CAGR e' poco informativo (issue #88).
         "orizzonte_breve": avviso_orizzonte is not None,
@@ -428,6 +454,19 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Backtest da riga di comando. Senza argomenti esegue la simulazione "
+                    "di esempio in dollari.")
+    parser.add_argument("--valuta", choices=["USD", "EUR", "ITL"], default="USD",
+                        help="Valuta dei valori: USD (dati di partenza), EUR o ITL. "
+                             "Il cambio è applicato ai prezzi, non al risultato.")
+    parser.add_argument("--reale", action="store_true",
+                        help="Valori al netto dell'inflazione italiana (potere d'acquisto "
+                             "della prima data simulata).")
+    argomenti = parser.parse_args()
+
     weights = {
         'VTSIM': 0.60,
         'SPYSIM': 0.00,
@@ -454,4 +493,6 @@ if __name__ == "__main__":
         # stampava uno Sharpe più alto di quello mostrato dall'interfaccia
         # sulla stessa simulazione.
         risk_free_rate="CASHX",
+        valuta=argomenti.valuta,
+        reale=argomenti.reale,
     )
