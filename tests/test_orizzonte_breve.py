@@ -9,6 +9,8 @@ Due difetti in uno, e il secondo e' quello che l'utente legge.
    La simulazione non va impedita (un periodo breve si puo' volere lo stesso), ma va
    dichiarata — nel motore, nel riepilogo e nell'interfaccia.
 """
+import os
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -17,13 +19,17 @@ import pytest
 
 from backtester import (ANNI_MINIMI_AFFIDABILI, anni_simulati, backtest,
                         messaggio_orizzonte_breve)
+from conftest import imposta_allocazione, imposta_orizzonte_automatico
 
 DATASET = str(Path(__file__).resolve().parent.parent / "Timeseries.csv")
 
 
 def sintetico(prezzi, inizio="2020-01-01"):
     date = pd.bdate_range(inizio, periods=len(prezzi))
-    percorso = "/tmp/caso_orizzonte.csv"
+    # File temporaneo del sistema: "/tmp" non esiste su Windows, e un percorso fisso
+    # faceva fallire questi test solo sulla macchina di chi sviluppa, mai sulla CI.
+    descrittore, percorso = tempfile.mkstemp(prefix="caso_orizzonte_", suffix=".csv")
+    os.close(descrittore)
     pd.DataFrame({"Date": date.strftime("%d/%m/%Y"), "A": prezzi}).to_csv(percorso, sep=";", index=False)
     return percorso, date
 
@@ -104,9 +110,20 @@ AppTest = modulo.AppTest
 APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
 
 
+ALLOCAZIONE_PROVA = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
+
+
 def avvia():
+    """App pronta per i test sull'orizzonte: portafoglio dichiarato e date a mano.
+
+    L'allocazione va scritta perché la tabella parte da zero (i portafogli
+    predefiniti sono stati rimossi): senza instrumenti in portafoglio l'app non
+    calcola nessuna finestra, e l'avviso sull'orizzonte breve non ha nulla da
+    dichiarare.
+    """
     at = AppTest.from_file(APP, default_timeout=180)
     at.run()
+    imposta_allocazione(at, ALLOCAZIONE_PROVA)
     imposta_orizzonte_automatico(at, False)
     return at
 
@@ -180,6 +197,7 @@ def test_interfaccia_e_motore_concordano_sull_avviso(inizio, fine, atteso):
     """Un solo caso di divergenza qui vuol dire due fonti di verita' per la stessa soglia."""
     at = AppTest.from_file(APP, default_timeout=180)
     at.run()
+    imposta_allocazione(at, ALLOCAZIONE_PROVA)
     at.checkbox[0].set_value(False).run()
     at.date_input[0].set_value(pd.Timestamp(inizio).date()).run()
     at.date_input[1].set_value(pd.Timestamp(fine).date()).run()
