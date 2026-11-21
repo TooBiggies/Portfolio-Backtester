@@ -191,11 +191,11 @@ def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, c
 with st.sidebar:
     st.header("Parametri")
     valuta = st.selectbox(
-        "Valuta", ["USD", "EUR", "ITL"], index=0, key="valuta",
+        "Valuta", ["USD", "EUR"], index=0, key="valuta",
         format_func=lambda v: f"{SIMBOLI[v]}  {v} — {ETICHETTE[v]}",
         help="I dati di partenza sono in dollari. Cambiando valuta si convertono i prezzi, "
              "non solo il risultato: costi, imposte e ribilanciamenti avvengono nella "
-             "valuta scelta, come per chi compra strumenti denominati in euro o in lire. "
+             "valuta scelta, come per chi compra strumenti denominati in euro. "
              "Prima del 1999 il cambio euro/dollaro è ricostruito dalla lira (1936,27 "
              "lire per euro) con dati mensili: è la convenzione dell'euro sintetico.")
     min_date_valuta = _minimo_ammesso(valuta)
@@ -478,8 +478,7 @@ if not _errore and CHIAVE_RISULTATI in st.session_state:
         f"{SIMBOLI[summary.get('valuta', 'USD')]}."
     )
     if summary.get("valuta", "USD") != "USD" or summary.get("reale"):
-        _valuta_riga = ("euro" if summary["valuta"] == "EUR"
-                        else "lire" if summary["valuta"] == "ITL" else "dollari")
+        _valuta_riga = "euro" if summary["valuta"] == "EUR" else "dollari"
         _nota = (f"Valori in **{_valuta_riga}**: il cambio è applicato ai prezzi, quindi "
                  "ribilanciamenti e imposte ragionano nella valuta scelta.")
         if summary.get("reale"):

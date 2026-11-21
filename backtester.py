@@ -184,7 +184,7 @@ def backtest(initial_value, weights, begin_date=None, end_date=None, brokerage_f
 
     valuta : str
         Valuta in cui esprimere il portafoglio: ``"USD"`` (i dati di partenza),
-        ``"EUR"`` o ``"ITL"``. Convertono i **prezzi**, non il risultato: costi, imposte
+        ``"EUR"``. Convertono i **prezzi**, non il risultato: costi, imposte
         e ribilanciamenti avvengono nella valuta scelta, come per un investitore che
         compra strumenti denominati in euro o in lire.
 
@@ -467,8 +467,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Backtest da riga di comando. Senza argomenti esegue la simulazione "
                     "di esempio in dollari.")
-    parser.add_argument("--valuta", choices=["USD", "EUR", "ITL"], default="USD",
-                        help="Valuta dei valori: USD (dati di partenza), EUR o ITL. "
+    parser.add_argument("--valuta", choices=["USD", "EUR"], default="USD",
+                        help="Valuta dei valori: USD (dati di partenza) o EUR (ante-1999 ricostruito dalla lira). "
                              "Il cambio è applicato ai prezzi, non al risultato.")
     parser.add_argument("--reale", action="store_true",
                         help="Valori al netto dell'inflazione italiana (potere d'acquisto "
