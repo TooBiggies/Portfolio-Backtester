@@ -97,3 +97,31 @@ def test_dollari_senza_deflazione_restituiscono_gli_stessi_prezzi(prezzi):
     """Percorso rapido: nessuna conversione, nessun file da leggere."""
     identici = converti_prezzi(prezzi, valuta="USD", reale=False, percorso="non-esiste.csv")
     pd.testing.assert_frame_equal(identici, prezzi)
+
+
+def test_finestra_prima_del_cambio_viene_ritagliata():
+    """Chi sceglie gli euro non può partire dal 1969: le serie di cambio cominciano nel 1971.
+
+    Non è un errore dell'utente, è un limite dei dati: la simulazione parte dal primo
+    giorno disponibile invece di fallire.
+    """
+    from backtester import backtest
+
+    _, _, summary = backtest(
+        initial_value=10_000.0,
+        weights={"VTSIM": 1.0},
+        begin_date="1969-12-31",
+        end_date="1975-12-31",
+        brokerage_fee_rate=0.001,
+        annual_costs_rate=0.002,
+        tax_rate=0.26,
+        rebalance_threshold=0.05,
+        rel_rebalance_threshold=0.2,
+        risk_free_rate="CASHX",
+        plot=False,
+        save_outputs=False,
+        valuta="EUR",
+    )
+    assert summary["valuta"] == "EUR"
+    assert summary["begin_date"].year >= 1971
+    assert summary["final_net"] > 0

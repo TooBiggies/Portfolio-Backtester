@@ -74,6 +74,17 @@ def fattore_deflazione(date, serie: pd.DataFrame) -> pd.Series:
     return cpi.iloc[0] / cpi
 
 
+def prima_data_valida(percorso=None):
+    """Prima data in cui cambio e inflazione esistono entrambi.
+
+    Il dataset dei prezzi comincia il 31/12/1969, il cambio del dollaro contro lira
+    nel 1971: se si esprime il portafoglio in euro o lire, la simulazione può partire
+    solo da lì. Chiedere prima non è un errore dell'utente, è un limite dei dati.
+    """
+    serie = carica_serie(percorso)
+    return serie.index.min()
+
+
 def converti_prezzi(prezzi: pd.DataFrame, valuta: str = "USD", reale: bool = False,
                     percorso=None) -> pd.DataFrame:
     """Prezzi espressi nella valuta scelta ed eventualmente al netto dell'inflazione.
