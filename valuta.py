@@ -22,9 +22,9 @@ from pathlib import Path
 
 import pandas as pd
 
-VALUTE = ("USD", "EUR", "ITL")
-ETICHETTE = {"USD": "dollari", "EUR": "euro", "ITL": "lire"}
-SIMBOLI = {"USD": "$", "EUR": "€", "ITL": "₤"}
+VALUTE = ("USD", "EUR")
+ETICHETTE = {"USD": "dollari", "EUR": "euro/lira"}
+SIMBOLI = {"USD": "$", "EUR": "€"}
 LIRA_PER_EURO = 1936.27
 PERCORSO_PREDEFINITO = Path(__file__).resolve().parent / "dati" / "cambi_inflazione.csv"
 
@@ -46,18 +46,22 @@ def fattore_cambio(valuta: str, date, serie: pd.DataFrame) -> pd.Series:
     """Quanto vale, nella valuta scelta, un dollaro in ciascuna data.
 
     ``EURUSD`` è espresso in dollari per euro: per passare da dollari a euro si divide.
-    Le lire si ottengono dagli euro con il tasso irrevocabile di conversione.
+    La lira non è più una valuta a sé: l'euro copre anche il periodo ante-1999, dove il
+    dato è ricostruito dalla lira al tasso irrevocabile di conversione.
     """
     if valuta == "USD":
         return pd.Series(1.0, index=pd.DatetimeIndex(date))
+    if valuta == "ITL":
+        raise ValueError(
+            "La lira non è più una valuta separata: i valori in euro coprono anche il "
+            "periodo ante-1999, al cambio irrevocabile di 1936,27 lire per euro.")
     cambio = serie["EURUSD"].reindex(pd.DatetimeIndex(date), method="ffill")
     if cambio.isna().any():
         mancanti = cambio[cambio.isna()].index
         raise ValueError(
             f"Il cambio non copre la finestra simulata: {len(mancanti)} date senza valore "
             f"(la serie va dal {serie.index.min().date()} al {serie.index.max().date()}).")
-    euro = 1.0 / cambio
-    return euro * (LIRA_PER_EURO if valuta == "ITL" else 1.0)
+    return 1.0 / cambio
 
 
 def fattore_deflazione(date, serie: pd.DataFrame) -> pd.Series:

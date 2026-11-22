@@ -8,7 +8,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from valuta import LIRA_PER_EURO, carica_serie, converti_prezzi, fattore_cambio, fattore_deflazione
+from valuta import VALUTE, carica_serie, converti_prezzi, fattore_cambio, fattore_deflazione
 
 DATE = pd.date_range("2000-01-01", periods=4, freq="YS")
 
@@ -45,10 +45,12 @@ def test_euro_divide_per_il_cambio(serie):
     assert fattore_cambio("EUR", DATE, serie).iloc[0] == pytest.approx(0.5)
 
 
-def test_lire_sono_euro_per_1936_27(serie):
-    euro = fattore_cambio("EUR", DATE, serie)
-    lire = fattore_cambio("ITL", DATE, serie)
-    assert (lire / euro).iloc[0] == pytest.approx(LIRA_PER_EURO)
+def test_la_lira_non_e_piu_una_valuta(serie):
+    # La lira non è più selezionabile: l'euro copre anche il periodo ante-1999,
+    # dove il cambio è ricostruito dalla lira al tasso irrevocabile.
+    assert VALUTE == ("USD", "EUR")
+    with pytest.raises(ValueError, match="lira"):
+        fattore_cambio("ITL", DATE, serie)
 
 
 def test_deflazione_vale_uno_il_primo_giorno(serie):
