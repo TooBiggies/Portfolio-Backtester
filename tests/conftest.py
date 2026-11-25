@@ -1,4 +1,3 @@
-from pathlib import Path
 """Configurazione comune dei test.
 
 `MPLBACKEND=Agg` va impostato prima che matplotlib venga importato: senza, su una
@@ -8,6 +7,9 @@ thread di Streamlit (AppTest, Streamlit in generale) termina il processo con
 deterministici anche su un runner headless.
 """
 import os
+from pathlib import Path
+
+import pytest
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 
