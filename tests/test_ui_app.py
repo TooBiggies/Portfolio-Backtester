@@ -22,7 +22,7 @@ modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non insta
 AppTest = modulo.AppTest
 
 APP = Path(__file__).resolve().parent.parent / "streamlit_app.py"
-pytestmark = pytest.mark.ui
+pytestmark = [pytest.mark.ui, pytest.mark.dati]
 
 ASSET = ["VTSIM", "GLDSIM", "ZROZSIM", "DBMFSIM"]
 

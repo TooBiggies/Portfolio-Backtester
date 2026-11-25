@@ -14,7 +14,7 @@ AppTest = modulo.AppTest
 from conftest import imposta_allocazione, imposta_orizzonte_automatico
 
 APP = Path(__file__).resolve().parent.parent / "streamlit_app.py"
-pytestmark = pytest.mark.ui
+pytestmark = [pytest.mark.ui, pytest.mark.dati]
 
 
 def esegui_breve():
