@@ -1,9 +1,10 @@
 from io import BytesIO
-from pathlib import Path
 
 import altair as alt
 import pandas as pd
 import streamlit as st
+
+from dati_storico import percorso_dataset
 
 from backtester import backtest, anni_simulati, messaggio_orizzonte_breve
 from valuta import ETICHETTE, SIMBOLI, prima_data_valida
@@ -88,7 +89,13 @@ def applica_valori_globali():
     nuova_versione_tabella()
 
 
-DATA_FILE = Path(__file__).with_name("Timeseries.csv")
+# Il dataset non sta nel repository (vedi PERMISSION.md): il modulo sa dove cercarlo e,
+# se manca, lo scarica dal deposito privato usando il token nei secret dell'app.
+try:
+    DATA_FILE = percorso_dataset()
+except RuntimeError as _errore_dati:
+    st.error(str(_errore_dati))
+    st.stop()
 
 
 @st.cache_data(show_spinner=False)
