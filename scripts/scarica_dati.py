@@ -19,9 +19,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
+
+# lo script vive in scripts/: la radice del repository non è nel percorso di ricerca
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from dati_storico import scarica  # noqa: E402
 
 REPOSITORY = "TooBiggies/Portfolio-Backtester-dati"
 PERCORSO = "Timeseries.csv"
@@ -29,45 +32,6 @@ RIF = "main"
 # una serie di 49 anni in questo formato pesa oltre un megabyte: se arriva molto meno,
 # il download è andato storto anche se il server ha risposto 200
 DIMENSIONE_MINIMA = 200_000
-
-
-def scarica(destinazione: Path, token: str, ref: str) -> None:
-    """Scarica il CSV via API di GitHub, con il token di sola lettura."""
-    indirizzo = (
-        f"https://api.github.com/repos/{REPOSITORY}/contents/{PERCORSO}?ref={ref}"
-    )
-    richiesta = urllib.request.Request(
-        indirizzo,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github.raw",
-            "User-Agent": "Portfolio-Backtester",
-        },
-    )
-    try:
-        with urllib.request.urlopen(richiesta, timeout=120) as risposta:
-            contenuto = risposta.read()
-    except urllib.error.HTTPError as errore:
-        if errore.code == 404:
-            sys.exit(
-                f"Il dataset non è stato trovato in {REPOSITORY} ({ref}).\n"
-                "Controlla di avere accesso al repository privato."
-            )
-        if errore.code in (401, 403):
-            sys.exit(
-                "Token non valido o senza permesso di lettura sul repository privato.\n"
-                "Serve un fine-grained token con 'Contents: Read-only' su "
-                f"{REPOSITORY}."
-            )
-        raise
-
-    destinazione.write_bytes(contenuto)
-    if destinazione.stat().st_size < DIMENSIONE_MINIMA:
-        destinazione.unlink(missing_ok=True)
-        sys.exit(
-            "Il file scaricato è troppo piccolo per essere il dataset completo: "
-            "download interrotto, niente è stato scritto."
-        )
 
 
 def copia_locale(origine: Path, destinazione: Path) -> None:
