@@ -1,0 +1,49 @@
+name: verifica con i dati completi
+
+# Job manuale, da avviare a mano dal pannello Actions.
+#
+# Perché solo manuale: il dataset storico sta in un repository privato e per
+# scaricarlo serve un token. Se questo workflow partisse sulle pull request,
+# chiunque aprisse una PR potrebbe modificare lo YAML per far uscire il token o i
+# dati. Con workflow_dispatch il codice eseguito è quello del branch scelto da chi
+# avvia il job, e i secret sono disponibili solo a chi ha già i permessi di scrittura.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Revisione del repository dati da usare"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+
+jobs:
+  verifica:
+    name: pytest con il dataset reale
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Installa le dipendenze
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pandas>=3.0.3" "numpy>=2.4.6" "matplotlib>=3.10.9" "openpyxl>=3.1.5" "pytest>=8" "streamlit>=1.66.1"
+
+      - name: Recupera il dataset dal repository privato
+        env:
+          PTF_DATI_TOKEN: ${{ secrets.PTF_DATI_TOKEN }}
+        run: python scripts/scarica_dati.py --ref "${{ inputs.ref }}"
+
+      - name: Test completi
+        # Con il dataset presente i test end-to-end non vengono saltati: è l'unico
+        # posto dove la suite gira sui dati veri e non su serie generate in memoria.
+        run: |
+          python -m pytest tests -q -p no:cacheprovider
