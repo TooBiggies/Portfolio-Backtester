@@ -1,3 +1,4 @@
+import pytest
 """backtest() documenta date come stringhe: devono funzionare quanto i Timestamp."""
 import pandas as pd
 from backtester import backtest
@@ -15,3 +16,6 @@ def test_stringhe_e_timestamp_danno_lo_stesso_risultato():
     _, _, b = backtest(10000, W, begin_date=pd.Timestamp("2020-01-02"),
                        end_date=pd.Timestamp("2021-01-04"), save_outputs=False)
     assert abs(a["final_broker"] - b["final_broker"]) < 1e-9
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

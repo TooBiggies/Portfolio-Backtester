@@ -77,3 +77,6 @@ def test_senza_bollo_rate_non_si_paga_il_bollo():
         warnings.simplefilter("error", DeprecationWarning)   # nessun avviso se non lo si passa
         pf, _ = Portfolio.from_weights(pd.Series({"A": 1.0}), 10000, {"A": 1.0}, 0.0, 0.0)
     assert float(pf.daily_annual_costs.sum()) == 0.0
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

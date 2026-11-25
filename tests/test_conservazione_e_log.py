@@ -101,3 +101,6 @@ def test_il_riepilogo_coincide_con_l_ultima_riga_del_log():
     assert summary["final_gross"] == pytest.approx(ultima["GrossPortfolioValue"], rel=1e-12)
     assert summary["final_broker"] == pytest.approx(ultima["BrokerPortfolioValue"], rel=1e-12)
     assert summary["final_net"] == pytest.approx(ultima["Net"], rel=1e-12)
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

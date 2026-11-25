@@ -121,3 +121,6 @@ def test_override_esplicito_prevale_sulla_quota():
     pf.prices = pd.Series({"GOV": 20.0})
     _, tax = pf.sell(20.0, "GOV", 10, tax_rate=0.26)
     assert tax == pytest.approx(26.0, abs=1e-12)
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

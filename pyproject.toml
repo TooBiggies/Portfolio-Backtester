@@ -17,6 +17,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+markers = ["dati: richiede Timeseries.csv, non incluso nel repository"]
 # `ui` marca i test che importano streamlit: si saltano da soli dove non e' installato
 # e girano nel job dedicato della CI.
 markers = [

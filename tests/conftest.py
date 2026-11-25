@@ -1,3 +1,4 @@
+from pathlib import Path
 """Configurazione comune dei test.
 
 `MPLBACKEND=Agg` va impostato prima che matplotlib venga importato: senza, su una
@@ -46,3 +47,22 @@ def imposta_orizzonte_automatico(at, attivo=False):
     """
     casella_per_chiave(at, "orizzonte_auto").set_value(attivo).run()
     return at
+
+
+# --- dataset storico assente -------------------------------------------------
+# Il file Timeseries.csv non sta nel repository (vedi PERMISSION.md). Su un clone
+# pulito i test che lo usano non devono fallire con FileNotFoundError: si saltano,
+# e il motivo resta scritto nel report. Non si genera un dataset finto: un test
+# verde su dati inventati sarebbe peggio di un test saltato.
+DATI = Path(__file__).resolve().parent.parent / "Timeseries.csv"
+
+
+def pytest_collection_modifyitems(config, items):
+    if DATI.exists():
+        return
+    motivo = pytest.mark.skip(
+        reason="Timeseries.csv assente: serve un'esportazione di testfol.io (vedi PERMISSION.md)"
+    )
+    for elemento in items:
+        if "dati" in elemento.keywords:
+            elemento.add_marker(motivo)

@@ -104,3 +104,6 @@ def test_senza_soglia_relativa_il_risultato_non_cambia_rispetto_a_prima():
                                   soglia_relativa=None)
     b = motore_numpy.valori_netti(prezzi.to_numpy(float), vettore, soglia_assoluta=0.05)
     assert np.array_equal(a, b)
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati
