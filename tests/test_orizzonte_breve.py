@@ -210,3 +210,6 @@ def test_interfaccia_e_motore_concordano_sull_avviso(inizio, fine, atteso):
         _, _, s = backtest(100_000.0, pesi, begin_date=inizio, end_date=fine,
                            data_path=DATASET, save_outputs=False)
     assert s["orizzonte_breve"] is atteso, f"motore: {s['orizzonte_breve']}, atteso {atteso}"
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

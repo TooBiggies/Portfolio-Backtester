@@ -119,3 +119,6 @@ def test_aliquota_al_26_su_tutto_costa_piu_del_dodici_cinque_sui_bond():
     piatta = esegui(brokerage_fee_rate=0.0029, annual_costs_rate=0.002,
                     tax_rate={"VTSIM": 0.26, "ZROZSIM": 0.26})
     assert piatta["final_net"] < pro_quota["final_net"]
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

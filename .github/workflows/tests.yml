@@ -71,6 +71,20 @@ jobs:
       - name: Versione effettiva
         run: python -c "import sys, pandas, numpy; print(sys.version); print('pandas', pandas.__version__, '| numpy', numpy.__version__)"
 
+      - name: Recupera il dataset storico
+        # Timeseries.csv non è nel repository: contiene serie esportate da testfol.io,
+        # che ne ha autorizzato l'uso ma non la ridistribuzione (PERMISSION.md). Il token
+        # esiste solo sui branch di questo repository, non sulle pull request da fork:
+        # in quel caso i test marcati `dati` si saltano da soli, senza far fallire la CI.
+        env:
+          PTF_DATI_TOKEN: ${{ secrets.PTF_DATI_TOKEN }}
+        run: |
+          if [ -z "${PTF_DATI_TOKEN}" ]; then
+            echo "Nessun token disponibile: la suite salterà i test che richiedono il dataset."
+            exit 0
+          fi
+          python scripts/scarica_dati.py
+
       - name: Test
         # I test leggono Timeseries.csv dalla radice del repo e il backend
         # matplotlib è senza display su un runner: nessuna configurazione extra.

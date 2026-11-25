@@ -1,5 +1,29 @@
 Portfolio Backtester simula l'evoluzione storica di un portafoglio tenendo conto dell'asset allocation, dei ribilanciamenti, delle commissioni, dei costi annuali e della fiscalità.
 
+## Il dataset storico (da leggere prima di clonare)
+
+Il file `Timeseries.csv` **non è in questo repository**. Contiene serie esportate da
+testfol.io, che ne ha autorizzato l'uso per questo progetto ma non la ridistribuzione:
+tenerlo qui equivarrebbe a ridistribuirlo. I termini completi, con il testo del permesso,
+sono in [PERMISSION.md](PERMISSION.md).
+
+Perché il simulatore funzioni serve un dataset, e ci sono due modi per averlo:
+
+```bash
+# 1. da un'esportazione personale di testfol.io
+python scripts/scarica_dati.py --da /percorso/Timeseries.csv
+
+# 2. dal repository privato, con un token di sola lettura in PTF_DATI_TOKEN
+export PTF_DATI_TOKEN=...
+python scripts/scarica_dati.py
+```
+
+Senza il dataset l'applicazione non parte e i test end-to-end vengono saltati, con un
+messaggio esplicito: non falliscono fingendo che vada tutto bene.
+
+Nei materiali che mostrano risultati calcolati su questi dati la fonte va indicata:
+«dati storici: testfol.io».
+
 ## Come avviare il backtester online
 
 Da questa pagina:

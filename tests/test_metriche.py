@@ -141,3 +141,6 @@ def test_backtest_espone_ulcer_e_calmar():
     net = s2["risk_metrics"]["net"]
     assert net["ulcer_index"] is not None and net["ulcer_index"] > 0
     assert net["calmar"] is not None
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

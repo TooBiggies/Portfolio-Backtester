@@ -142,3 +142,6 @@ def test_capitale_negativo_viene_rifiutato_con_messaggio_chiaro():
     with pytest.raises(ValueError, match="capitale"):
         backtest(-1000, {"VTSIM": 1.0}, begin_date=pd.Timestamp("2020-01-02"),
                  end_date=pd.Timestamp("2020-03-02"), save_outputs=False)
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

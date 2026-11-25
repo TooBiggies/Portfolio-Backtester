@@ -127,3 +127,6 @@ def test_finestra_prima_del_cambio_viene_ritagliata():
     assert summary["valuta"] == "EUR"
     assert summary["begin_date"].year >= 1971
     assert summary["final_net"] > 0
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati
