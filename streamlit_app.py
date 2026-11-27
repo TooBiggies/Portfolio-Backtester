@@ -1,18 +1,25 @@
-from io import BytesIO
-
 import altair as alt
 import pandas as pd
 import streamlit as st
 
 from dati_storico import percorso_dataset
+from esportazione import to_excel_bytes
 
 from backtester import backtest, anni_simulati, messaggio_orizzonte_breve
 from valuta import ETICHETTE, SIMBOLI, prima_data_valida
 
 st.set_page_config(page_title="Backtester", page_icon="📈", layout="wide")
-# Il titolo è il nome dello strumento e nient'altro: la pagina è una calcolatrice, e le
-# istruzioni stanno accanto ai comandi che spiegano.
-st.title("Backtester")
+# Il titolo è il nome dello strumento; accanto, a destra, il credito alla fonte dei dati.
+# Il permesso di testfol.io chiede l'attribuzione esplicita: metterla qui la rende visibile
+# a chi apre la pagina, non solo a chi legge il README.
+_col_titolo, _col_credito = st.columns([3, 2], vertical_alignment="bottom")
+with _col_titolo:
+    st.title("Backtester")
+with _col_credito:
+    st.caption(
+        "Dati storici: [testfol.io](https://testfol.io) — serie usate per gentile "
+        "autorizzazione dell'autore (24 novembre 2026)."
+    )
 
 # Cosa sono i ticker del dataset: senza questo, "VTSIM" non dice niente a chi apre la pagina.
 ASSET_INFO = {
@@ -145,23 +152,6 @@ def finestra_comune(attivi):
     return inizio, fine, chi
 
 
-def to_excel_bytes(df_log, df_delta):
-    """Excel dei risultati, senza le serie di prezzo.
-
-    L'export serve a mostrare la storia del portafoglio — valori, ribilanciamenti,
-    imposte — non a ridistribuire i dati di mercato. Le colonne `Price_*` e `PMC_*`
-    restano nel log interno (servono all'interfaccia e alle verifiche), ma non escono
-    dal file scaricabile: sono anche la parte che pesa, perché sono una colonna per
-    ogni giorno di borsa per ogni asset.
-    """
-    colonne = [c for c in df_log.columns if not c.startswith(("Price_", "PMC_"))]
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df_log[colonne].to_excel(writer, sheet_name="Portfolio")
-        df_delta.to_excel(writer, sheet_name="Rebalancing")
-    return buffer.getvalue()
-
-
 @st.cache_data(show_spinner=False, max_entries=2)
 def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, costi_annui,
                     aliquote, soglia_ribilanciamento, soglia_ribilanciamento_relativa=None,
@@ -193,6 +183,10 @@ def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, c
         # tratta come parametri, quindi ogni combinazione ha la sua voce giusta.
         valuta=valuta,
         reale=reale,
+        # Senza questo, backtest() usa il default "./Timeseries.csv", che è relativo
+        # alla cartella di lavoro del processo: su Streamlit Cloud è la radice, e il
+        # percorso diventava "/Timeseries.csv". Il dataset è stato scaricato altrove.
+        data_path=str(DATA_FILE),
     )
 
 with st.sidebar:
@@ -536,11 +530,16 @@ if not _errore and CHIAVE_RISULTATI in st.session_state:
             st.line_chart(df_log[chart_cols])
 
     st.download_button(
-        "Scarica risultati Excel",
+        "Scarica risultati Excel (solo finestre di ribilanciamento)",
         data=to_excel_bytes(df_log, df_delta),
         file_name="portfolio_backtest.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         width="stretch",
+    )
+    st.caption(
+        "Il file contiene i valori del portafoglio nei giorni attorno ai ribilanciamenti, "
+        "non l'intera serie giornaliera: le serie di prezzo non sono ridistribuibili "
+        "(vedi PERMISSION.md). Il grafico sopra mostra invece tutta la storia."
     )
     with st.expander("Anteprima risultati"):
         st.dataframe(df_log.tail(100), width="stretch")
