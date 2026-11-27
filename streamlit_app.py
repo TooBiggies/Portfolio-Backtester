@@ -193,6 +193,10 @@ def esegui_backtest(initial_value, weights, begin_date, end_date, commissioni, c
         # tratta come parametri, quindi ogni combinazione ha la sua voce giusta.
         valuta=valuta,
         reale=reale,
+        # Senza questo, backtest() usa il default "./Timeseries.csv", che è relativo
+        # alla cartella di lavoro del processo: su Streamlit Cloud è la radice, e il
+        # percorso diventava "/Timeseries.csv". Il dataset è stato scaricato altrove.
+        data_path=str(DATA_FILE),
     )
 
 with st.sidebar:
