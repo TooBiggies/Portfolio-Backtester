@@ -10,9 +10,17 @@ from backtester import backtest, anni_simulati, messaggio_orizzonte_breve
 from valuta import ETICHETTE, SIMBOLI, prima_data_valida
 
 st.set_page_config(page_title="Backtester", page_icon="📈", layout="wide")
-# Il titolo è il nome dello strumento e nient'altro: la pagina è una calcolatrice, e le
-# istruzioni stanno accanto ai comandi che spiegano.
-st.title("Backtester")
+# Il titolo è il nome dello strumento; accanto, a destra, il credito alla fonte dei dati.
+# Il permesso di testfol.io chiede l'attribuzione esplicita: metterla qui la rende visibile
+# a chi apre la pagina, non solo a chi legge il README.
+_col_titolo, _col_credito = st.columns([3, 2], vertical_alignment="bottom")
+with _col_titolo:
+    st.title("Backtester")
+with _col_credito:
+    st.caption(
+        "Dati storici: [testfol.io](https://testfol.io) — serie usate per gentile "
+        "autorizzazione dell'autore (24 novembre 2026)."
+    )
 
 # Cosa sono i ticker del dataset: senza questo, "VTSIM" non dice niente a chi apre la pagina.
 ASSET_INFO = {
