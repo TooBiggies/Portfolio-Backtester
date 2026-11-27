@@ -1,0 +1,43 @@
+[project]
+name = "portfolio-backtester"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "matplotlib>=3.10.9",
+    "numpy>=2.4.6",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+# `ui` marca i test che importano streamlit: si saltano da soli dove non e' installato
+# e girano nel job dedicato della CI.
+# `dati` marca i test che leggono Timeseries.csv: il file non sta nel repository, quindi
+# su un clone pulito vengono saltati invece di fallire (vedi PERMISSION.md).
+markers = [
+    "ui: richiede streamlit (AppTest), eseguito nel job CI dedicato",
+    "dati: richiede Timeseries.csv, non incluso nel repository",
+]
+
+[tool.ruff]
+# Solo la famiglia F (pyflakes): errori veri — nomi non definiti, import inutilizzati,
+# variabili assegnate e mai usate. Si parte da qui perché è l'insieme che oggi passa:
+# aggiungere stile (E, I) senza ripulire il codice renderebbe la CI rossa al primo merge.
+# L'insieme va allargato man mano che il resto viene sistemato.
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Codice morto, senza import e senza test: non si ripulisce quello che va rimosso.
+# Quando i due file spariranno, spariscono anche queste righe.
+"classes.py" = ["F401", "F403", "F405"]
+"create_xlsx.py" = ["F401", "F403", "F405"]

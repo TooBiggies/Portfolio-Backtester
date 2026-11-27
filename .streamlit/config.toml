@@ -1,0 +1,10 @@
+# Configurazione di esecuzione: vale in locale e su Streamlit Community Cloud.
+#
+# headless: su un server non c'è un browser da aprire, e il tentativo di aprirlo
+# sporca i log di un errore che non è un errore.
+[server]
+headless = true
+
+# Nessuna telemetria verso Streamlit: l'app non manda statistiche d'uso.
+[browser]
+gatherUsageStats = false
