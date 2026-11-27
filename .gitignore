@@ -1,0 +1,17 @@
+__pycache__/
+*png
+*.pyc
+.python-version
+*.csv
+
+
+# artefatti di coverage, non vanno nel repo
+.coverage
+.coverage.*
+htmlcov/
+
+# output delle simulazioni: si rigenerano a ogni esecuzione, non sono sorgenti
+*.xlsx
+
+# Le serie di cambio e inflazione sono dati di riferimento, non output: si versionano.
+!dati/cambi_inflazione.csv

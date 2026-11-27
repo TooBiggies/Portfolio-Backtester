@@ -1,55 +1,201 @@
-# Portfolio Backtester (Focus Italia) 🇮🇹
+Portfolio Backtester simula l'evoluzione storica di un portafoglio tenendo conto dell'asset allocation, dei ribilanciamenti, delle commissioni, dei costi annuali e della fiscalità.
 
-Un tool per simulare l'andamento di portafogli d'investimento pensato specificamente per andare oltre i classici calcoli dei rendimenti lordi, permettendo di comprendere come la **tassazione** e i **costi operativi** influiscano sulla crescita del capitale nel tempo.
+## Il dataset storico (da leggere prima di clonare)
 
-## Dati storici e permesso d'uso
+Il file `Timeseries.csv` **non è in questo repository**. Contiene serie esportate da
+testfol.io, che ne ha autorizzato l'uso per questo progetto ma non la ridistribuzione:
+tenerlo qui equivarrebbe a ridistribuirlo. I termini completi, con il testo del permesso,
+sono in [PERMISSION.md](PERMISSION.md).
 
-Il dataset storico usato dal simulatore (`Timeseries.csv`) **non è distribuito con questo
-progetto**. Contiene serie esportate da [testfol.io](https://testfol.io), che ne ha
-autorizzato l'uso per questo progetto non commerciale ma non la ridistribuzione.
+Perché il simulatore funzioni serve un dataset, e ci sono due modi per averlo:
 
-Il testo integrale del permesso, con data e condizioni, è in [PERMISSION.md](PERMISSION.md).
-Le serie si procurano con un'esportazione personale dal sito, oppure — per chi ha accesso
-al deposito privato — con lo script `scripts/scarica_dati.py` del branch di sviluppo.
+```bash
+# 1. da un'esportazione personale di testfol.io
+python scripts/scarica_dati.py --da /percorso/Timeseries.csv
+
+# 2. dal repository privato, con un token di sola lettura in PTF_DATI_TOKEN
+export PTF_DATI_TOKEN=...
+python scripts/scarica_dati.py
+```
+
+Senza il dataset l'applicazione non parte e i test end-to-end vengono saltati, con un
+messaggio esplicito: non falliscono fingendo che vada tutto bene.
 
 Nei materiali che mostrano risultati calcolati su questi dati la fonte va indicata:
 «dati storici: testfol.io».
 
-## 🎯 Cosa permette di fare
+## Come avviare il backtester online
 
-* **Modellazione dei costi reali:** Il tool integra parametri fondamentali come **spread**, **commissioni** e **tracking difference**. Questi costi sono aggregati logicamente per riflettere l'operatività reale: 
-    * I costi "spot" sono applicati sia in acquisto che in vendita (commissioni e spread).
-    * La componente fiscale sulle plusvalenze viene calcolata al momento della vendita.
-    * I costi ricorrenti, come l'imposta di bollo e la tracking difference, vengono applicati su base annuale.
-* **Rendimenti reali (Netti):** Confronto tra la crescita lorda del mercato e il rendimento effettivamente disponibile per l'investitore dopo tasse e costi.
-* **Analisi dei ribilanciamenti:** Valutazione dell'impatto fiscale e commissionale quando si vendono quote per riportare il portafoglio all'asset allocation desiderata.
+Da questa pagina:
 
-## Come testare (notebook):
-Eseguire il notebook Backtester.ipynb. L'ultima cella genera dei widget interattivi che permettono di scegliere la asset allocation desiderata. Cliccando su Esegui Backtest, il codice restituisce l'output del backtest e genera due file xlsx che tracciano l'allocazione del portafoglio e i ribilanciament.
+1. Cliccare sul pulsante verde **Code**.
+2. Selezionare la scheda **Codespaces**.
+3. Cliccare su **Create codespace on develop**.
+4. Attendere l'apertura dell'ambiente di sviluppo nel browser.
+5. Aprire il terminale dal menu **Terminal > New Terminal**.
+6. Installare le dipendenze:
 
-## Come testare (codespace):
-##pullare le modifiche da questo branch non dovrebbe essere necessario, ma di seguito la riga di codice:
+```bash
+python -m pip install -r requirements.txt
+```
 
-##`git pull main`
+7. Avviare l'applicazione:
 
-creare virtual environment:
+```bash
+python -m streamlit run streamlit_app.py
+```
 
-`python3 -m venv .venv`
+8. Quando il Codespace segnala che l'applicazione è disponibile sulla porta `8501`, cliccare su **Open in Browser**.
 
-attivare virtual environment:
+Se la notifica non compare, aprire la scheda **Porte**, individuare la porta `8501` e cliccare sull'icona per aprirla nel browser.
 
-`source .venv/bin/activate`
+## Come eseguire la simulazione da terminale
 
-installare dipendenze:
+Oltre all'interfaccia, il progetto ha un secondo punto di ingresso: `backtester.py`.
+Si usa dalla cartella del progetto, con le dipendenze già installate:
 
-`pip install -r requirements.txt`
+```bash
+python backtester.py
+```
 
-runnare:
+Esegue la configurazione scritta nel blocco `if __name__ == "__main__"` in fondo al
+file — attualmente 60% `VTSIM`, 25% `ZROZSIM`, 10% `GLDSIM`, 5% `DBMFSIM`, capitale
+iniziale 10.000, dal 2 gennaio 2010 al 1° settembre 2025, commissione 0,29%, soglia di
+ribilanciamento 10%, imposta 26%. Per simulare un altro portafoglio si modificano quei
+parametri nel file: è un esempio eseguibile, non un'interfaccia a riga di comando.
 
-`python backtester.py`
+L'output è lo stesso riepilogo dell'app, stampato a video: orizzonte, anni, CAGR lordo,
+broker e netto, valore finale, volatilità, drawdown massimo, Sharpe, Sortino, Ulcer
+index e Calmar.
 
-questo produce `output_ptf.xlsx` e `output_ptf_delta.xlsx`.
+Vengono inoltre scritti nella cartella `output_ptf.xlsx`, `output_ptf_delta.xlsx` e
+`plot.png`: sono artefatti di una simulazione, non sorgenti, e si rigenerano a ogni
+esecuzione. Per non produrli si passa `save_outputs=False` alla chiamata.
 
+## Come utilizzare l'applicazione
 
-## ⚠️ Nota
-Questo strumento è creato a scopo informativo e di studio personale. Non fornisce consigli finanziari o fiscali e i risultati delle simulazioni non sono garanzia di rendimenti futuri.
+Nella pagina dell'applicazione è possibile configurare:
+
+- capitale iniziale;
+- data iniziale e finale;
+- peso percentuale di ciascun asset;
+- costi di negoziazione;
+- costi annuali;
+- aliquota fiscale;
+- soglia di ribilanciamento.
+
+La somma dei pesi degli asset deve essere pari al `100%`.
+
+Dopo aver impostato i parametri, cliccare su **Esegui backtest**.
+
+## Pubblicare l'app su Streamlit Community Cloud
+
+L'app è pronta per essere pubblicata gratuitamente, senza server da gestire:
+
+1. Accedere a [share.streamlit.io](https://share.streamlit.io) con l'account GitHub.
+2. **New app** → repository `TooBiggies/Portfolio-Backtester`.
+3. **Branch: `develop`** (non `main`: contiene solo il README) e **Main file path: `streamlit_app.py`**.
+4. **Deploy**.
+
+Cosa aspettarsi dal piano gratuito:
+
+- **1 GB di RAM e un core condiviso.** Due simulazioni insieme si mettono in coda: il
+  backtest su venticinque anni impiega da 12 a 40 secondi.
+- **L'app va in sleep dopo un periodo di inattività** e si risveglia al primo visitatore,
+  con qualche secondo di attesa.
+- **Nessun dato persistente:** ogni riavvio riparte dal CSV nel repository.
+- La cache è già configurata: lo storico dei prezzi si legge una volta per file e il
+  risultato di una simulazione viene riusato per la stessa combinazione di parametri.
+
+Due cose da verificare al primo deploy:
+
+- **Versione di Python.** `pyproject.toml` dichiara `>=3.14`; la piattaforma potrebbe
+  offrire solo 3.13. Il codice non usa nulla di specifico della 3.14, quindi dovrebbe
+  funzionare: se l'installazione fallisce, il primo sospetto è la versione selezionata
+  nelle impostazioni dell'app.
+- **`requirements.txt` è un freeze generato su macOS.** Contiene alcuni pacchetti che
+  servono solo lì (per esempio `appnope`). Se l'installazione su Linux si blocca, il set
+  minimo che serve davvero è questo:
+
+```bash
+pandas numpy matplotlib openpyxl streamlit
+```
+
+## Perimetro editoriale
+
+Questo strumento **calcola**, non consiglia. La distinzione è il motivo per cui l'app è
+fatta così com'è.
+
+**Cosa fa:** applica una sequenza di regole deterministiche (allocazione, ribilanciamenti,
+commissioni, costi annui, imposte) a una serie storica di prezzi, e mostra cosa sarebbe
+successo. Niente di più.
+
+**Cosa non fa, e non deve fare:**
+
+- non propone allocazioni. I portafogli predefiniti con un nome proprio — «Classico 60/40»,
+  «All weather», «Golden butterfly» e simili — sono stati **rimossi**: per un'autorità di
+  vigilanza un'allocazione suggerita con un nome è un portafoglio modello, cioè una
+  raccomandazione rivolta a un pubblico indistinto. La tabella parte da zero e i pesi li
+  scrive chi usa lo strumento;
+- non valuta l'adeguatezza di un prodotto rispetto a un profilo, un'esigenza o una
+  situazione patrimoniale;
+- non fa previsioni e non produce segnali di acquisto o vendita;
+- non nomina prodotti negoziabili: le serie con suffisso `SIM` sono ricostruzioni, non
+  strumenti che qualcuno può comprare;
+- non raccoglie dati personali: non c'è login, non c'è profilazione, e l'elaborazione
+  avviene nella sessione del visitatore.
+
+**Limiti del calcolo, dichiarati:** le imposte sono applicate solo sugli utili realizzati
+al ribilanciamento e le minusvalenze non sono compensate (issue #89); i valori sono in
+dollari statunitensi; il rendimento passato non predice quello futuro.
+
+Chi usa questo strumento per decidere come impiegare il proprio denaro lo sta usando come
+calcolatrice, non come consulente: la responsabilità della scelta resta sua.
+
+## Risultati
+
+Al termine dell'elaborazione, l'applicazione mostra:
+
+- valore finale lordo;
+- valore finale presso il broker;
+- valore finale netto;
+- CAGR lordo;
+- CAGR presso il broker;
+- CAGR netto;
+- andamento storico del portafoglio.
+
+### GrossPortfolioValue
+
+Valore del portafoglio ideale simulato senza commissioni di negoziazione, costi annuali e imposte sulle plusvalenze realizzate.
+
+### BrokerPortfolioValue
+
+Valore degli asset effettivamente detenuti nel portafoglio reale, dopo l'applicazione dei costi e delle imposte già sostenuti durante la simulazione.
+
+### Net
+
+Valore stimato del portafoglio reale al netto dei costi e delle imposte applicabili in caso di liquidazione.
+
+La differenza tra `GrossPortfolioValue` e `BrokerPortfolioValue` rappresenta l'effetto cumulato dei costi e della fiscalità, compreso il mancato rendimento sul capitale utilizzato per sostenere tali oneri.
+
+## Esportazione dei risultati
+
+Il pulsante **Scarica risultati Excel** genera un file con due fogli:
+
+- `Portfolio`: evoluzione giornaliera del portafoglio;
+- `Rebalancing`: operazioni e variazioni registrate durante i ribilanciamenti.
+
+## Terminare la sessione
+
+Per interrompere Streamlit, tornare al terminale e premere `Ctrl+C`.
+
+Al termine dell'utilizzo è consigliabile arrestare o eliminare il Codespace per evitare di consumare inutilmente le ore e lo spazio disponibili.
+
+## Note
+
+- Le date devono rientrare nell'intervallo disponibile nelle serie storiche.
+- La data iniziale deve precedere la data finale.
+- I pesi degli asset devono sommare al `100%`.
+- Le percentuali inserite vengono convertite automaticamente in valori decimali.
+- I risultati dipendono dalla qualità e dalla completezza delle serie storiche.
+- Il backtest non costituisce una previsione dei rendimenti futuri.
