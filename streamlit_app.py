@@ -1,10 +1,9 @@
-from io import BytesIO
-
 import altair as alt
 import pandas as pd
 import streamlit as st
 
 from dati_storico import percorso_dataset
+from esportazione import to_excel_bytes
 
 from backtester import backtest, anni_simulati, messaggio_orizzonte_breve
 from valuta import ETICHETTE, SIMBOLI, prima_data_valida
@@ -151,23 +150,6 @@ def finestra_comune(attivi):
     fine = min(fini.values())
     chi = next(a for a, d in partenze.items() if d == inizio)
     return inizio, fine, chi
-
-
-def to_excel_bytes(df_log, df_delta):
-    """Excel dei risultati, senza le serie di prezzo.
-
-    L'export serve a mostrare la storia del portafoglio — valori, ribilanciamenti,
-    imposte — non a ridistribuire i dati di mercato. Le colonne `Price_*` e `PMC_*`
-    restano nel log interno (servono all'interfaccia e alle verifiche), ma non escono
-    dal file scaricabile: sono anche la parte che pesa, perché sono una colonna per
-    ogni giorno di borsa per ogni asset.
-    """
-    colonne = [c for c in df_log.columns if not c.startswith(("Price_", "PMC_"))]
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df_log[colonne].to_excel(writer, sheet_name="Portfolio")
-        df_delta.to_excel(writer, sheet_name="Rebalancing")
-    return buffer.getvalue()
 
 
 @st.cache_data(show_spinner=False, max_entries=2)
@@ -548,11 +530,16 @@ if not _errore and CHIAVE_RISULTATI in st.session_state:
             st.line_chart(df_log[chart_cols])
 
     st.download_button(
-        "Scarica risultati Excel",
+        "Scarica risultati Excel (solo finestre di ribilanciamento)",
         data=to_excel_bytes(df_log, df_delta),
         file_name="portfolio_backtest.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         width="stretch",
+    )
+    st.caption(
+        "Il file contiene i valori del portafoglio nei giorni attorno ai ribilanciamenti, "
+        "non l'intera serie giornaliera: le serie di prezzo non sono ridistribuibili "
+        "(vedi PERMISSION.md). Il grafico sopra mostra invece tutta la storia."
     )
     with st.expander("Anteprima risultati"):
         st.dataframe(df_log.tail(100), width="stretch")
