@@ -103,3 +103,6 @@ def test_con_una_finestra_troppo_corta_l_output_dice_n_d_invece_di_un_numero(cap
              save_outputs=False)
     uscita = capsys.readouterr().out
     assert "n.d." in uscita
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

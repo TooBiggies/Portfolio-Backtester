@@ -90,3 +90,6 @@ def test_un_capitale_valido_continua_a_funzionare():
     """La guardia non deve rompere il caso normale."""
     _, _, sommario = esegui(initial_value=5000)
     assert sommario["final_net"] > 0
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

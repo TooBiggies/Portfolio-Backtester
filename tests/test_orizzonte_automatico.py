@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from conftest import imposta_allocazione, imposta_orizzonte_automatico
+from conftest import casella_per_chiave, imposta_allocazione, imposta_orizzonte_automatico
 
 modulo = pytest.importorskip("streamlit.testing.v1", reason="streamlit non installato")
 AppTest = modulo.AppTest
 
 APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
-pytestmark = pytest.mark.ui
+pytestmark = [pytest.mark.ui, pytest.mark.dati]
 
 
 ALLOCAZIONE_PROVA = {"VTSIM": 60.0, "GLDSIM": 10.0, "IEFSIM": 20.0, "DBMFSIM": 10.0}
@@ -56,7 +56,7 @@ def data_usata(at):
 def test_con_orizzonte_automatico_i_campi_data_spariscono():
     at = avvia()
     assert len(at.date_input) == 2, "di default ci sono i due campi data"
-    at.checkbox[0].set_value(True).run()
+    casella_per_chiave(at, "orizzonte_auto").set_value(True).run()
     assert len(at.date_input) == 0, "con l'orizzonte automatico non ci sono date da compilare"
 
 
@@ -65,7 +65,7 @@ def test_orizzonte_automatico_usa_la_finestra_comune_a_tutti_gli_strumenti():
     DBMFSIM, il 3 gennaio 2000: la simulazione deve partire da lì, non dal 2001 del campo
     data né dal 1969 di VTSIM."""
     at = avvia()
-    at.checkbox[0].set_value(True).run()
+    casella_per_chiave(at, "orizzonte_auto").set_value(True).run()
     bottone(at, "Esegui backtest").click().run()
     assert not at.exception, [str(e.value) for e in at.exception]
     inizio, fine = data_usata(at)
@@ -78,7 +78,7 @@ def test_la_finestra_comune_dipende_dagli_strumenti_scelti():
     non è una costante dell'applicazione, è una proprietà del portafoglio."""
     at = avvia()
     imposta_allocazione(at, {"VTSIM": 100.0})      # solo azionario globale
-    at.checkbox[0].set_value(True).run()
+    casella_per_chiave(at, "orizzonte_auto").set_value(True).run()
     bottone(at, "Esegui backtest").click().run()
     inizio, _ = data_usata(at)
     assert inizio.year <= 1970, inizio
@@ -88,7 +88,7 @@ def test_l_orizzonte_automatico_e_dichiarato_prima_di_lanciare():
     """L'utente deve sapere quale finestra verrà usata senza dover lanciare il backtest,
     e chi la decide."""
     at = avvia()
-    at.checkbox[0].set_value(True).run()
+    casella_per_chiave(at, "orizzonte_auto").set_value(True).run()
     testo = caption_unite(at)
     assert "Orizzonte automatico" in testo
     assert "2000-01-03" in testo, testo
@@ -124,5 +124,5 @@ def test_l_orizzonte_automatico_e_attivo_di_default():
     """
     at = AppTest.from_file(APP, default_timeout=180)
     at.run()
-    assert at.checkbox[0].value is True
+    assert casella_per_chiave(at, "orizzonte_auto").value is True
     assert len(at.date_input) == 0, "con l'orizzonte automatico non ci sono date da compilare"

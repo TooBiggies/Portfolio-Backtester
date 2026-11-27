@@ -130,3 +130,6 @@ def test_serie_che_non_copre_la_finestra_solleva_errore():
     date = pd.bdate_range("2020-01-02", periods=4)
     with pytest.raises(ValueError, match="non copre la finestra"):
         serie_da_dataset(df, "CASHX", date)
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

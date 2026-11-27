@@ -56,3 +56,6 @@ def test_senza_save_outputs_non_sporca_la_cartella(tmp_path, monkeypatch):
     backtest(10000, PESI, begin_date=pd.Timestamp("2020-01-02"), end_date=pd.Timestamp("2020-06-01"),
              save_outputs=False, data_path=DATI)
     assert list(tmp_path.iterdir()) == []
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

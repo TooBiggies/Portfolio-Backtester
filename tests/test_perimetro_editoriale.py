@@ -23,7 +23,7 @@ codice = "\n".join(riga for riga in sorgente.splitlines()
 
 from conftest import imposta_orizzonte_automatico
 
-pytestmark = pytest.mark.ui
+pytestmark = [pytest.mark.ui, pytest.mark.dati]
 
 
 def avvia():

@@ -24,3 +24,6 @@ def test_finestra_valida_passa():
                        begin_date=pd.Timestamp("2010-01-04"),
                        end_date=pd.Timestamp("2011-01-04"), save_outputs=False)
     assert s["final_broker"] > 0
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

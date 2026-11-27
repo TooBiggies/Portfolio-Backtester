@@ -1,3 +1,4 @@
+import pytest
 """Test di caratterizzazione del motore: fissano il comportamento attuale di engine.py.
 
 Servono come rete di sicurezza per le correzioni successive: se un numero cambia,
@@ -58,3 +59,6 @@ def test_configurazione_di_default_converge():
                        end_date=pd.Timestamp("2021-01-04"), brokerage_fee_rate=0.0029,
                        annual_costs_rate=0.002, tax_rate=0.26, save_outputs=False)
     assert s["final_broker"] > 0 and s["final_gross"] > s["final_net"]
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati
