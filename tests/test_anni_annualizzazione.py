@@ -1,3 +1,4 @@
+import pytest
 """Il CAGR deve essere annualizzato sui dati realmente simulati, non sulle date richieste."""
 import pandas as pd
 from backtester import backtest
@@ -10,3 +11,6 @@ def test_anni_usano_lo_span_reale_dei_dati():
                        end_date=pd.Timestamp("2025-09-01"), save_outputs=False)
     assert 55.0 < s["years"] < 56.5, f"anni dichiarati: {s['years']}"
     assert s["cagr_gross"] > 0.09, f"CAGR lordo: {s['cagr_gross']:.4f}"
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

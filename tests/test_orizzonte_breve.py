@@ -19,7 +19,7 @@ import pytest
 
 from backtester import (ANNI_MINIMI_AFFIDABILI, anni_simulati, backtest,
                         messaggio_orizzonte_breve)
-from conftest import imposta_allocazione, imposta_orizzonte_automatico
+from conftest import casella_per_chiave, imposta_allocazione, imposta_orizzonte_automatico
 
 DATASET = str(Path(__file__).resolve().parent.parent / "Timeseries.csv")
 
@@ -140,7 +140,7 @@ def avvisi(at):
 def test_interfaccia_avvisa_su_dates_brevi_e_lascia_eseguire():
     """Date a mano su 3 anni: avviso visibile prima del clic, e il backtest parte."""
     at = avvia()
-    at.checkbox[0].set_value(False).run()                      # orizzonte automatico spento
+    casella_per_chiave(at, "orizzonte_auto").set_value(False).run()                      # orizzonte automatico spento
     at.date_input[0].set_value(pd.Timestamp("2022-01-03").date()).run()
     at.date_input[1].set_value(pd.Timestamp("2025-09-01").date()).run()
     assert "affidabil" in avvisi(at), f"avvisi presenti: {avvisi(at)!r}"
@@ -152,7 +152,7 @@ def test_interfaccia_avvisa_su_dates_brevi_e_lascia_eseguire():
 @pytest.mark.ui
 def test_interfaccia_non_avvisa_su_orizzonte_lungo():
     at = avvia()
-    at.checkbox[0].set_value(True).run()                       # finestra automatica: 25 anni
+    casella_per_chiave(at, "orizzonte_auto").set_value(True).run()                       # finestra automatica: 25 anni
     assert "affidabil" not in avvisi(at), f"avvisi presenti: {avvisi(at)!r}"
 
 
@@ -198,7 +198,7 @@ def test_interfaccia_e_motore_concordano_sull_avviso(inizio, fine, atteso):
     at = AppTest.from_file(APP, default_timeout=180)
     at.run()
     imposta_allocazione(at, ALLOCAZIONE_PROVA)
-    at.checkbox[0].set_value(False).run()
+    casella_per_chiave(at, "orizzonte_auto").set_value(False).run()
     at.date_input[0].set_value(pd.Timestamp(inizio).date()).run()
     at.date_input[1].set_value(pd.Timestamp(fine).date()).run()
     avviso_ui = any("Orizzonte breve" in w.value for w in at.warning)
@@ -210,3 +210,6 @@ def test_interfaccia_e_motore_concordano_sull_avviso(inizio, fine, atteso):
         _, _, s = backtest(100_000.0, pesi, begin_date=inizio, end_date=fine,
                            data_path=DATASET, save_outputs=False)
     assert s["orizzonte_breve"] is atteso, f"motore: {s['orizzonte_breve']}, atteso {atteso}"
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

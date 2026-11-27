@@ -17,3 +17,6 @@ def test_un_backtest_normale_converge():
     _, _, s = backtest(10000, {"VTSIM": 0.6, "GLDSIM": 0.4}, begin_date=pd.Timestamp("2020-01-02"),
                        end_date=pd.Timestamp("2021-01-04"), save_outputs=False)
     assert s["final_broker"] > 0
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

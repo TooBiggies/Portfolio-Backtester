@@ -1,3 +1,4 @@
+import pytest
 """Il valore netto deve usare l'aliquota configurata, non un 26% cablato."""
 import pandas as pd
 from backtester import backtest
@@ -28,3 +29,6 @@ def test_cash_out_costs_usa_aliquota_del_portafoglio():
     pf.prices = pd.Series({"A": 20.0})
     assert abs(pf.cash_out_costs().sum() - 100.0) < 1e-9     # 10% di 1.000
     assert abs(pf.cash_out_costs(tax_rate=0.26).sum() - 260.0) < 1e-9   # override esplicito
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati

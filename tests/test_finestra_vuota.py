@@ -52,3 +52,6 @@ def test_una_finestra_valida_non_cambia_comportamento():
     _, _, s = esegui("2000-01-03", "2025-09-04")
     assert s["final_broker"] > 0
     assert s["years"] > 25
+
+# questi test leggono il dataset storico reale: senza Timeseries.csv si saltano
+pytestmark = pytest.mark.dati
