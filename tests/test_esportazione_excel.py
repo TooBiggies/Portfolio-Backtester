@@ -40,8 +40,12 @@ def log_finto(giorni: int = 40) -> tuple[pd.DataFrame, pd.DataFrame]:
     }
     log = pd.DataFrame(dati, index=date)
     delta = pd.DataFrame({"VTSIM": [0.0] * giorni}, index=date)
-    delta.iloc[10, 0] = 250.0   # un ribilanciamento
-    delta.iloc[30, 0] = -120.0  # un altro
+    # I ribilanciamenti vanno messi solo se quelle righe esistono: con un log piu'
+    # corto di 31 giorni un iloc[30] solleva IndexError, e il test che usa 20 giorni
+    # falliva dentro la fixture invece che sul codice da provare.
+    for riga, valore in ((10, 250.0), (30, -120.0)):
+        if riga < giorni:
+            delta.iloc[riga, 0] = valore
     return log, delta
 
 
