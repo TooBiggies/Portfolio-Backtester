@@ -1,7 +1,7 @@
 """I costi di detenzione: chi non ne ha non deve pagarli, e 0,2% annuo e' 0,2%.
 
 Dal #73 l'imposta di bollo non e' piu' un parametro separato: e' un costo annuo di
-detenzione, quello che l'interfaccia mostra nel campo "Costi annui" (default 0,2%).
+detenzione, quello che l'interfaccia mostra nel campo "Costi annui" (default 0,35%: bollo 0,20 + TER 0,15).
 Quindi `annual_costs_rate=0` deve valere zero davvero, anche per il portafoglio ideale.
 """
 import warnings

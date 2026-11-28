@@ -103,7 +103,7 @@ def campo_globale(at, testo):
     return next(x for x in at.number_input if testo in x.label)
 
 
-def test_i_default_dichiarati_sono_010_02_26():
+def test_i_default_dichiarati_sono_010_035_26():
     """I default sono una **decisione di prodotto**, non un dettaglio: se cambiano, questo
     test deve cambiare con loro, e chi lo cambia sa che sta spostando i numeri di tutti i
     report.
@@ -116,10 +116,10 @@ def test_i_default_dichiarati_sono_010_02_26():
     at = avvia()
     tabella = tabella_asset(at)
     assert float(campo_globale(at, "Costi di negoziazione").value) == pytest.approx(0.1)
-    assert float(campo_globale(at, "Costi annui").value) == pytest.approx(0.2)
+    assert float(campo_globale(at, "Costi annui").value) == pytest.approx(0.35)
     assert float(campo_globale(at, "Aliquota fiscale").value) == pytest.approx(26.0)
     assert float((tabella["Commissione (%)"] - 0.1).abs().max()) < 1e-9
-    assert float((tabella["Costi annui (%)"] - 0.2).abs().max()) < 1e-9
+    assert float((tabella["Costi annui (%)"] - 0.35).abs().max()) < 1e-9
     for asset in ("SHYSIM", "IEFSIM", "TLTSIM", "ZROZSIM"):
         assert abs(float(tabella.loc[asset, "Aliquota (%)"]) - 12.5) < 1e-9, asset
 
