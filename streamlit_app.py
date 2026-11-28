@@ -23,7 +23,7 @@ with _col_credito:
 
 # Cosa sono i ticker del dataset: senza questo, "VTSIM" non dice niente a chi apre la pagina.
 ASSET_INFO = {
-    "VTSIM":   ("Azionario globale", "Tutti i mercati sviluppati ed emergenti in un solo ETF (MSCI ACWI)."),
+    "VTSIM":   ("Azionario globale", "Tutti i mercati sviluppati ed emergenti in un solo ETF (indice FTSE Global All Cap)."),
     "SPYSIM":  ("Azioni USA large cap", "S&P 500: le 500 maggiori società statunitensi."),
     "VXUSSIM": ("Azioni fuori dagli USA", "Mercati sviluppati ed emergenti esclusi gli Stati Uniti."),
     "GLDSIM":  ("Oro fisico", "ETC garantito da lingotti: segue il prezzo spot dell'oro, non è un OICR."),
@@ -249,10 +249,12 @@ with st.sidebar:
         help="Commissione del broker, per operazione."
              "Cambiandola si applica a tutti gli strumenti.")
     annual_costs_pct = st.number_input(
-        "Costi annui (%)", min_value=0.0, max_value=10.0, value=0.2, step=0.01,
+        "Costi annui (%)", min_value=0.0, max_value=10.0, value=0.35, step=0.01,
         key="glob_costi", on_change=applica_colonna("Costi annui (%)", "glob_costi"),
-        help="Tutto il costo annuo di detenzione: imposta di bollo (0,20%) ed eventuali costi "
-             "di piattaforma. Il TER degli ETF è già dentro le serie dei prezzi.")
+        help="Tutto il costo annuo di detenzione: imposta di bollo (0,20%), TER dell'ETF "
+             "(0,15% nei valori precompilati) ed eventuali costi di piattaforma. "
+             "Le serie simulate del dataset (VTSIM, SPYSIM, ...) hanno ER 0%: il costo del "
+             "fondo NON e' dentro i prezzi, quindi va messo qui o i risultati escono ottimisti.")
     tax_pct = st.number_input(
         "Aliquota fiscale (%)", min_value=0.0, max_value=100.0, value=26.0, step=0.1,
         key="glob_aliquota", on_change=applica_colonna("Aliquota (%)", "glob_aliquota"),
@@ -321,7 +323,8 @@ tabella = st.data_editor(
             help="Commissione del broker per operazione su questo strumento."),
         "Costi annui (%)": st.column_config.NumberColumn(
             "Costi annui (%)", min_value=0.0, max_value=10.0, step=0.01, format="%.2f",
-            help="Costo di detenzione annuo: bollo e piattaforma. Il TER è già nelle serie con suffisso SIM."),
+            help="Costo di detenzione annuo: bollo (0,20%), TER dell'ETF ed eventuali costi di "
+                 "piattaforma. Le serie con suffisso SIM hanno ER 0%: il TER non è nei prezzi."),
         "Aliquota (%)": st.column_config.NumberColumn(
             "Aliquota (%)", min_value=0.0, max_value=100.0, step=0.1, format="%.1f",
             help="12,5% sui titoli di Stato white list, 26% sul resto."),
